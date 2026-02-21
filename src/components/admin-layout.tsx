@@ -4,12 +4,13 @@ import { useEffect, useState } from 'react'
 import { useTheme } from 'next-themes'
 import { usePathname, useRouter } from 'next/navigation'
 import { useAppStore } from '@/lib/store'
-import { Clock, Moon, Sun, LogOut, LayoutDashboard, Users, Dumbbell, BarChart3, Plus, Save } from 'lucide-react'
+import { Clock, Moon, Sun, LogOut, LayoutDashboard, Users, Dumbbell, BarChart3, List } from 'lucide-react'
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const { theme, setTheme } = useTheme()
   const { currentUser, setCurrentUser } = useAppStore()
   const [time, setTime] = useState(new Date())
+  const [isChecking, setIsChecking] = useState(true)
   const pathname = usePathname()
   const router = useRouter()
 
@@ -19,10 +20,26 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   }, [])
 
   useEffect(() => {
+    // Only check authentication once on mount
+    if (currentUser === undefined) {
+      // User state not loaded yet, wait
+      return
+    }
+
+    setIsChecking(false)
+
     if (!currentUser || currentUser.role !== 'owner') {
       router.push('/')
     }
   }, [currentUser, router])
+
+  if (isChecking) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="font-mono text-foreground">Loading...</div>
+      </div>
+    )
+  }
 
   const handleLogout = () => {
     setCurrentUser(null)
@@ -33,6 +50,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     { icon: LayoutDashboard, label: 'Dashboard', path: '/admin' },
     { icon: Users, label: 'Users', path: '/admin/users' },
     { icon: Dumbbell, label: 'Exercises', path: '/admin/exercises' },
+    { icon: List, label: 'Sequences', path: '/admin/sequence' },
     { icon: BarChart3, label: 'Analytics', path: '/admin/analytics' },
   ]
 

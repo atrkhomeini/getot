@@ -64,48 +64,65 @@ export default function ExercisePage() {
     }
   }
 
-  const handleSave = async () => {
-    if (!currentUser || !selectedExercise) return
+const handleSave = async () => {
+  if (!currentUser || !selectedExercise) return
 
-    setSaving(true)
-    try {
-      if (workoutLog) {
-        // Update existing log
-        const { error } = await supabase
-          .from('workout_logs')
-          .update({
-            actual_sets: actualSets,
-            actual_reps: actualReps,
-            weight: actualWeight,
-          })
-          .eq('id', workoutLog.id)
-
-        if (error) throw error
-      } else {
-        // Create new log
-        const { error } = await supabase
-          .from('workout_logs')
-          .insert({
-            user_id: currentUser.id,
-            exercise_id: selectedExercise.id,
-            actual_sets: actualSets,
-            actual_reps: actualReps,
-            weight: actualWeight,
-            date: new Date().toISOString().split('T')[0],
-          })
-
-        if (error) throw error
-      }
-
-      toast.success('Workout log saved successfully!')
-      await fetchWorkoutLog()
-    } catch (err) {
-      console.error('Error saving workout log:', err)
-      toast.error('Failed to save workout log')
-    } finally {
-      setSaving(false)
+  setSaving(true)
+  try {
+    // Step 1: Save workout log (existing code)
+    if (workoutLog) {
+      const { error } = await supabase
+        .from('workout_logs')
+        .update({
+          actual_sets: actualSets,
+          actual_reps: actualReps,
+          weight: actualWeight,
+        })
+        .eq('id', workoutLog.id)
+      if (error) throw error
+    } else {
+      const { error } = await supabase
+        .from('workout_logs')
+        .insert({
+          user_id: currentUser.id,
+          exercise_id: selectedExercise.id,
+          actual_sets: actualSets,
+          actual_reps: actualReps,
+          weight: actualWeight,
+          date: new Date().toISOString().split('T')[0],
+        })
+      if (error) throw error
     }
+
+    // Step 2: Mark exercise as completed in workout session
+    const { data: progress } = await supabase
+      .from('user_progress')
+      .select('current_day_number')
+      .eq('user_id', currentUser.id)
+      .single()
+
+    if (progress) {
+      await fetch('/api/workout-sessions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          user_id: currentUser.id,
+          day_number: progress.current_day_number,
+          exercise_id: selectedExercise.id,
+          completed: true,
+        }),
+      })
+    }
+
+    toast.success('Workout log saved!')
+    await fetchWorkoutLog()
+  } catch (err) {
+    console.error('Error saving workout log:', err)
+    toast.error('Failed to save workout log')
+  } finally {
+    setSaving(false)
   }
+}
 
   if (loading || !selectedExercise) {
     return (
