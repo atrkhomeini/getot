@@ -12,7 +12,7 @@ type Exercise = Database['public']['Tables']['exercises']['Row']
 
 const categoryColors: Record<string, string> = {
   back: 'var(--secondary)',
-  legs: 'var(--accent)',
+  leg: 'var(--accent)',
   chest: 'var(--primary)',
   shoulder: 'var(--muted)',
   arm: '#FF6B6B',
@@ -20,7 +20,7 @@ const categoryColors: Record<string, string> = {
 
 const categoryIcons: Record<string, string> = {
   back: '🏋️',
-  legs: '🦵',
+  leg: '🦵',
   chest: '💪',
   shoulder: '🎯',
   arm: '💪',
@@ -207,7 +207,7 @@ export default function HomePage() {
     return acc
   }, {} as Record<string, (Exercise & { completed?: boolean })[]>)
 
-  const categoryOrder = ['back', 'chest', 'shoulder', 'legs', 'arm']
+  const categoryOrder = ['back', 'chest', 'shoulder', 'leg', 'arm']
 
   const getSequenceForDay = (dayNumber: number) => {
     return weekSequence.filter(s => s.day_number === dayNumber)
@@ -396,7 +396,7 @@ export default function HomePage() {
                         <div className="aspect-video bg-muted flex items-center justify-center relative overflow-hidden">
                           {exercise.gif_url ? (
                             <img
-                              src={exercise.gif_url}
+                              src={exercise.gif_url.startsWith('/') ? exercise.gif_url : exercise.gif_url}
                               alt={exercise.name}
                               className="w-full h-full object-cover"
                               onError={(e) => {
@@ -412,7 +412,6 @@ export default function HomePage() {
                             <Dumbbell className="w-12 h-12 text-white opacity-50" />
                           </div>
                         </div>
-
                         {/* Exercise Info */}
                         <div className="p-4">
                           <h3 className="font-bold text-lg text-foreground mb-2">

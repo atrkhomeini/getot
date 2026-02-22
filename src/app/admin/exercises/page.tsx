@@ -21,7 +21,73 @@ type Exercise = Database['public']['Tables']['exercises']['Row'] & {
   target_weight?: number
 }
 
-const categories = ['back', 'chest', 'shoulder', 'legs', 'arm'] as const
+const categories = ['back', 'chest', 'shoulder', 'leg', 'arm'] as const
+
+// Auto-detect category from exercise name
+const EXERCISE_CATEGORY_KEYWORDS: Record<string, string> = {
+  // Back keywords
+  'lat pulldown': 'back',
+  'row': 'back',
+  'pull up': 'back',
+  'chin up': 'back',
+  'pulldown': 'back',
+  'pull': 'back',
+  'shrug': 'back',
+  'hyperextension': 'back',
+  'deadlift': 'back',
+  
+  // Chest keywords
+  'bench press': 'chest',
+  'press': 'chest',
+  'fly': 'chest',
+  'dip': 'chest',
+  'pec': 'chest',
+  'chest': 'chest',
+  
+  // Shoulder keywords
+  'shoulder press': 'shoulder',
+  'lateral raise': 'shoulder',
+  'front raise': 'shoulder',
+  'face pull': 'shoulder',
+  'rear delt': 'shoulder',
+  'military press': 'shoulder',
+  
+  // Leg keywords
+  'squat': 'leg',
+  'leg': 'leg',
+  'lunge': 'leg',
+  'calf': 'leg',
+  'hamstring': 'leg',
+  'quad': 'leg',
+  'glute': 'leg',
+  'extension': 'leg',
+  'curl': 'leg',
+  'press': 'leg',
+  'hack squat': 'leg',
+  
+  // Arm keywords
+  'curl': 'arm',
+  'tricep': 'arm',
+  'bicep': 'arm',
+  'extension': 'arm',
+  'wrist': 'arm',
+  'tricep': 'arm',
+  'dumbell curl': 'arm',
+  'barbell curl': 'arm',
+}
+
+function detectCategoryFromName(name: string): string {
+  const lowerName = name.toLowerCase()
+  
+  // Check each keyword
+  for (const [keyword, category] of Object.entries(EXERCISE_CATEGORY_KEYWORDS)) {
+    if (lowerName.includes(keyword)) {
+      return category
+    }
+  }
+  
+  return 'back' // Default
+}
 
 export default function AdminExercisesPage() {
   const [exercises, setExercises] = useState<Exercise[]>([])
@@ -32,7 +98,11 @@ export default function AdminExercisesPage() {
   const [searchDialogOpen, setSearchDialogOpen] = useState(false)
   const [searchResults, setSearchResults] = useState<any[]>([])
   const [searching, setSearching] = useState(false)
-  const [saving, setSaving] = useState(false) // FIXED: Added missing state
+  const [saving, setSaving] = useState(false)
+  const [localAssets, setLocalAssets] = useState<any[]>([])
+  const [loadingAssets, setLoadingAssets] = useState(false)
+  const [showLocalAssets, setShowLocalAssets] = useState(false)
+  
   const [formData, setFormData] = useState({
     name: '',
     category: 'back' as const,
@@ -89,48 +159,103 @@ export default function AdminExercisesPage() {
     setDialogOpen(true)
   }
 
-  // FIXED: Correct function for saving exercises (not workout logs)
   const handleSaveExercise = async () => {
+    console.log('=== Starting save exercise ===')
+    console.log('formData:', formData)
+    console.log('isEditing:', isEditing)
+    console.log('selectedExercise:', selectedExercise)
+
     setSaving(true)
     try {
       if (isEditing && selectedExercise) {
-        // Update existing exercise
-        const { error } = await supabase
-          .from('exercises')
-          .update({
-            name: formData.name,
-            category: formData.category,
-            target_sets: formData.target_sets,
-            target_reps: formData.target_reps,
-            target_weight: formData.target_weight,
-            gif_url: formData.gif_url,
-          })
-          .eq('id', selectedExercise.id)
+        console.log('=== UPDATE MODE ===')
+        console.log('Exercise ID:', selectedExercise.id)
+        
+        const updateData = {
+          name: formData.name,
+          category: formData.category,
+          target_sets: formData.target_sets,
+          target_reps: formData.target_reps,
+          target_weight: formData.target_weight,
+          gif_url: formData.gif_url,
+        }
+        
+        console.log('Update data:', updateData)
 
-        if (error) throw error
+        const { data, error } = await supabase
+          .from('exercises')
+          .update(updateData)
+          .eq('id', selectedExercise.id)
+          .select()
+          .single()
+
+        if (error) {
+          console.error('=== SUPABASE UPDATE ERROR ===')
+          console.error('Error:', error)
+          console.error('Error message:', error.message)
+          console.error('Error code:', error.code)
+          console.error('Error details:', error.details)
+          console.error('Error hint:', error.hint)
+          throw error
+        }
+
+        console.log('Update successful:', data)
         toast.success('Exercise updated successfully!')
       } else {
-        // Create new exercise
-        const { error } = await supabase
-          .from('exercises')
-          .insert({
-            name: formData.name,
-            category: formData.category,
-            target_sets: formData.target_sets,
-            target_reps: formData.target_reps,
-            target_weight: formData.target_weight,
-            gif_url: formData.gif_url,
-          })
+        console.log('=== INSERT MODE ===')
+        
+        const insertData = {
+          name: formData.name,
+          category: formData.category,
+          target_sets: formData.target_sets,
+          target_reps: formData.target_reps,
+          target_weight: formData.target_weight,
+          gif_url: formData.gif_url,
+        }
+        
+        console.log('Insert data:', insertData)
 
-        if (error) throw error
+        const { data, error } = await supabase
+          .from('exercises')
+          .insert(insertData)
+          .select()
+          .single()
+
+        if (error) {
+          console.error('=== SUPABASE INSERT ERROR ===')
+          console.error('Error:', error)
+          console.error('Error message:', error.message)
+          console.error('Error code:', error.code)
+          console.error('Error details:', error.details)
+          console.error('Error hint:', error.hint)
+          throw error
+        }
+
+        console.log('Insert successful:', data)
         toast.success('Exercise created successfully!')
       }
 
       setDialogOpen(false)
       fetchExercises()
-    } catch (err) {
-      console.error('Error saving exercise:', err)
-      toast.error('Failed to save exercise')
+    } catch (err: any) {
+      console.error('=== CATCH BLOCK ERROR ===')
+      console.error('Error object:', err)
+      console.error('Error type:', typeof err)
+      console.error('Error message:', err?.message)
+      console.error('Error code:', err?.code)
+      console.error('Error details:', err?.details)
+      console.error('Error hint:', err?.hint)
+      console.error('Full error JSON:', JSON.stringify(err, null, 2))
+      
+      // Show user-friendly error
+      let errorMessage = 'Failed to save exercise'
+      if (err?.message) {
+        errorMessage = err.message
+      } else if (err?.code) {
+        errorMessage = `Database error: ${err.code}`
+      }
+      
+      toast.error(errorMessage)
     } finally {
       setSaving(false)
     }
@@ -160,8 +285,18 @@ export default function AdminExercisesPage() {
       return
     }
 
+    // Detect what the category should be
+    const detectedCategory = detectCategoryFromName(formData.name)
+    
+    // Warn if category doesn't match
+    if (detectedCategory !== formData.category) {
+      toast.warning(`Exercise name suggests "${detectedCategory}" category. We'll show all categories for you.`)
+    }
+
     setSearching(true)
+    setLoadingAssets(true)
     try {
+      // Search ExerciseDB API
       const response = await fetch(`/api/search-exercise?q=${encodeURIComponent(formData.name)}`)
       const data = await response.json()
 
@@ -169,24 +304,32 @@ export default function AdminExercisesPage() {
         const exercises = Array.isArray(data) ? data : []
         
         if (exercises.length === 0) {
-          toast.info('No exercises found. Try a different search term like "bench press" or "squat".')
+          toast.info('No exercises found in ExerciseDB. Check Local Assets tab.')
         } else {
           setSearchResults(exercises)
-          setSearchDialogOpen(true)
         }
       } else {
         throw new Error(data.error || 'Failed to search')
       }
+
+      // Fetch ALL local assets (not just current category)
+      const assetsResponse = await fetch('/api/local-assets')
+      const assetsData = await assetsResponse.json()
+      setLocalAssets(assetsData)
+
+      setSearchDialogOpen(true)
+      setShowLocalAssets(true)
     } catch (err) {
       console.error('Error searching exercises:', err)
-      toast.error('Failed to search for exercises. Please try again.')
+      toast.error('Failed to search. Please try again.')
     } finally {
       setSearching(false)
+      setLoadingAssets(false)
     }
   }
 
   const handleSelectGif = (exercise: any) => {
-    const imageUrl = exercise.gifUrl || exercise.imageUrl || exercise.gif || ''
+    const imageUrl = exercise.gifUrl || exercise.imageUrl || exercise.gif || exercise.url || ''
     
     setFormData({ ...formData, gif_url: imageUrl })
     setSearchDialogOpen(false)
@@ -197,7 +340,7 @@ export default function AdminExercisesPage() {
     back: 'var(--secondary)',
     chest: 'var(--primary)',
     shoulder: 'var(--accent)',
-    legs: 'var(--muted)',
+    leg: 'var(--muted)',
     arm: '#FF6B6B',
   }
 
@@ -255,10 +398,29 @@ export default function AdminExercisesPage() {
                   </label>
                   <Input
                     value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    onChange={(e) => {
+                      const newName = e.target.value
+                      setFormData({ ...formData, name: newName })
+                      
+                      // Auto-detect category when typing
+                      if (newName.length > 2) {
+                        const detected = detectCategoryFromName(newName)
+                        if (detected !== formData.category) {
+                          setFormData(prev => ({ ...prev, category: detected as any }))
+                        }
+                      }
+                    }}
                     className="neo-input"
-                    placeholder="e.g., Lat Pulldown"
+                    placeholder="e.g., Squat, Bench Press, Lat Pulldown"
                   />
+                  <p className="text-xs text-muted-foreground font-mono mt-1">
+                    Category: <span className="font-bold capitalize text-primary">{formData.category}</span>
+                    {formData.name.length > 2 && detectCategoryFromName(formData.name) !== formData.category && (
+                      <span className="text-yellow-600 ml-2">
+                        (Name suggests "{detectCategoryFromName(formData.name)}")
+                      </span>
+                    )}
+                  </p>
                 </div>
                 <div>
                   <label className="block text-sm font-bold text-foreground mb-2 font-mono">
@@ -329,14 +491,14 @@ export default function AdminExercisesPage() {
                       value={formData.gif_url}
                       onChange={(e) => setFormData({ ...formData, gif_url: e.target.value })}
                       className="neo-input flex-1"
-                      placeholder="https://example.com/exercise.gif"
+                      placeholder="/assets/leg/squat.gif or search below"
                     />
                     <Button
                       onClick={handleSearchGifs}
                       disabled={searching}
                       variant="outline"
                       className="neo-button px-3"
-                      title="Search for GIFs from ExerciseDB"
+                      title="Search for GIFs"
                     >
                       <Search className="w-5 h-5" />
                     </Button>
@@ -366,50 +528,157 @@ export default function AdminExercisesPage() {
 
           {/* Search GIFs Dialog */}
           <Dialog open={searchDialogOpen} onOpenChange={setSearchDialogOpen}>
-            <DialogContent className="neo-card bg-card max-w-5xl max-h-[90vh] overflow-hidden">
+            <DialogContent className="neo-card bg-card max-w-6xl max-h-[90vh] overflow-hidden">
               <DialogHeader>
                 <DialogTitle className="font-bold text-2xl">
                   Select an image for "{formData.name}"
                 </DialogTitle>
               </DialogHeader>
               
-              {searching ? (
+              {/* Tabs */}
+              <div className="flex gap-2 mb-4 border-b">
+                <button
+                  onClick={() => setShowLocalAssets(false)}
+                  className={`px-4 py-2 font-mono text-sm font-bold border-b-2 transition-colors ${
+                    !showLocalAssets 
+                      ? 'border-primary text-primary' 
+                      : 'border-transparent text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  ExerciseDB API ({searchResults.length})
+                </button>
+                <button
+                  onClick={() => setShowLocalAssets(true)}
+                  className={`px-4 py-2 font-mono text-sm font-bold border-b-2 transition-colors ${
+                    showLocalAssets 
+                      ? 'border-primary text-primary' 
+                      : 'border-transparent text-muted-foreground hover:text-foreground'
+                  }`}
+                >
+                  Local Assets ({localAssets.length})
+                </button>
+              </div>
+              
+              {searching || loadingAssets ? (
                 <div className="flex items-center justify-center py-12">
-                  <p className="font-mono text-muted-foreground">Searching...</p>
+                  <div className="inline-block animate-spin rounded-full h-12 w-12 border-4 border-primary border-t-transparent"></div>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 overflow-y-auto max-h-[70vh] p-2">
-                  {searchResults.map((result, index) => (
-                    <button
-                      key={index}
-                      onClick={() => handleSelectGif(result)}
-                      className="neo-card bg-muted rounded-2xl overflow-hidden hover:scale-105 hover:shadow-xl transition-all text-left border-2 border-transparent hover:border-primary aspect-square flex flex-col"
-                    >
-                      <div className="relative flex-1 min-h-0 bg-slate-200">
-                        <img
-                          src={result.gifUrl || result.imageUrl}
-                          alt={result.name}
-                          className="w-full h-full object-cover"
-                          onError={(e) => {
-                            e.currentTarget.style.display = 'none'
-                          }}
-                        />
-                      </div>
+                <div className="overflow-y-auto max-h-[60vh] p-2">
+                  {/* ExerciseDB Results */}
+                  {!showLocalAssets && (
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                      {searchResults.length > 0 ? (
+                        searchResults.map((result, index) => (
+                          <button
+                            key={`api-${index}`}
+                            onClick={() => handleSelectGif(result)}
+                            className="neo-card bg-muted rounded-2xl overflow-hidden hover:scale-105 hover:shadow-xl transition-all text-left border-2 border-transparent hover:border-primary aspect-square flex flex-col"
+                          >
+                            <div className="relative flex-1 min-h-0 bg-slate-200">
+                              <img
+                                src={result.gifUrl || result.imageUrl}
+                                alt={result.name}
+                                className="w-full h-full object-cover"
+                                onError={(e) => {
+                                  e.currentTarget.style.display = 'none'
+                                }}
+                              />
+                            </div>
+                            <div className="p-3 bg-card/90 backdrop-blur-sm">
+                              <p className="text-xs font-bold text-foreground line-clamp-1">
+                                {result.name}
+                              </p>
+                            </div>
+                          </button>
+                        ))
+                      ) : (
+                        <div className="col-span-full text-center py-12">
+                          <p className="text-muted-foreground font-mono">
+                            No results from ExerciseDB. Try the "Local Assets" tab.
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Local Assets - Grouped by Category */}
+                  {showLocalAssets && (
+                    <div>
+                      {['arm', 'back', 'chest', 'leg', 'shoulder'].map(cat => {
+                        const categoryAssets = localAssets.filter(a => a.category === cat)
+                        
+                        if (categoryAssets.length === 0) return null
+                        
+                        const isMatch = cat === formData.category
+                        
+                        return (
+                          <div key={cat} className="mb-6">
+                            <div className="flex items-center gap-2 mb-3">
+                              <div
+                                className={`w-3 h-3 rounded-full ${
+                                  isMatch ? 'bg-primary' : 'bg-muted'
+                                }`}
+                              />
+                              <h3 className="font-bold text-foreground capitalize">
+                                {cat} {isMatch && '(Current)'}
+                              </h3>
+                              <span className="text-xs text-muted-foreground font-mono">
+                                ({categoryAssets.length} files)
+                              </span>
+                            </div>
+                            
+                            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                              {categoryAssets.map((asset, index) => (
+                                <button
+                                  key={`${cat}-${index}`}
+                                  onClick={() => {
+                                    handleSelectGif({ gifUrl: asset.url, name: asset.filename })
+                                    // Auto-update category to match selected asset
+                                    if (cat !== formData.category) {
+                                      setFormData(prev => ({ ...prev, category: cat as any }))
+                                      toast.info(`Category changed to ${cat}`)
+                                    }
+                                  }}
+                                  className={`neo-card bg-muted rounded-2xl overflow-hidden hover:scale-105 hover:shadow-xl transition-all text-left border-2 ${
+                                    !isMatch ? 'border-transparent hover:border-primary' : 'border-primary'
+                                  } aspect-square flex flex-col`}
+                                >
+                                  <div className="relative flex-1 min-h-0 bg-slate-200">
+                                    <img
+                                      src={asset.url}
+                                      alt={asset.filename}
+                                      className="w-full h-full object-cover"
+                                      onError={(e) => {
+                                        e.currentTarget.style.display = 'none'
+                                      }}
+                                    />
+                                  </div>
+                                  <div className="p-3 bg-card/90 backdrop-blur-sm">
+                                    <p className="text-xs font-bold text-foreground line-clamp-1">
+                                      {asset.filename.replace(/\.(gif|jpg|png)$/i, '')}
+                                    </p>
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )
+                      })}
                       
-                      <div className="p-3 bg-card/90 backdrop-blur-sm">
-                        <p className="text-xs font-bold text-foreground line-clamp-1">
-                          {result.name}
-                        </p>
-                      </div>
-                    </button>
-                  ))}
+                      {localAssets.length === 0 && (
+                        <div className="text-center py-12">
+                          <p className="text-muted-foreground font-mono">
+                            No local assets found in: public/assets/
+                          </p>
+                          <p className="text-xs text-muted-foreground font-mono mt-2">
+                            Add GIF files to the assets folder to use them
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-              )}
-              
-              {searchResults.length === 0 && !searching && (
-                <p className="text-center text-muted-foreground py-8 font-mono">
-                  No exercises found. Try a different search term.
-                </p>
               )}
             </DialogContent>
           </Dialog>

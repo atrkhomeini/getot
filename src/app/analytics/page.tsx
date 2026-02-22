@@ -17,7 +17,7 @@ const categoryColors: Record<string, string> = {
   back: 'var(--secondary)',
   chest: 'var(--primary)',
   shoulder: 'var(--accent)',
-  legs: 'var(--muted)',
+  leg: 'var(--muted)',
   arm: '#FF6B6B',
 }
 
@@ -25,7 +25,7 @@ const categoryIcons: Record<string, string> = {
   back: '🏋️',
   chest: '💪',
   shoulder: '🎯',
-  legs: '🦵',
+  leg: '🦵',
   arm: '💪',
 }
 

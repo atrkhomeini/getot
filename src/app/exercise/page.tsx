@@ -178,7 +178,7 @@ const handleSave = async () => {
         {selectedExercise.gif_url && (
           <div className="neo-card bg-card rounded-2xl overflow-hidden mb-6">
             <img
-              src={selectedExercise.gif_url}
+              src={selectedExercise.gif_url.startsWith('/') ? selectedExercise.gif_url : selectedExercise.gif_url}
               alt={selectedExercise.name}
               className="w-full aspect-video object-cover"
               onError={(e) => {

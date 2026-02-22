@@ -110,7 +110,7 @@ export default function LoginPage() {
       <div className="mb-12">
         <h1 className="text-4xl md:text-6xl font-bold font-mono text-foreground flex items-center gap-3">
           <Dumbbell className="w-12 h-12 md:w-16 md:h-16" />
-          GYM LOG
+          GETOT
         </h1>
       </div>
 
