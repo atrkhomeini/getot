@@ -18,10 +18,10 @@ import {
 import { toast } from 'sonner'
 
 type Exercise = Database['public']['Tables']['exercises']['Row'] & {
-  target_weight: number
+  target_weight?: number
 }
 
-const categories = ['back', 'chest', 'shoulder', 'legs'] as const
+const categories = ['back', 'chest', 'shoulder', 'legs', 'arm'] as const
 
 export default function AdminExercisesPage() {
   const [exercises, setExercises] = useState<Exercise[]>([])
@@ -32,12 +32,13 @@ export default function AdminExercisesPage() {
   const [searchDialogOpen, setSearchDialogOpen] = useState(false)
   const [searchResults, setSearchResults] = useState<any[]>([])
   const [searching, setSearching] = useState(false)
+  const [saving, setSaving] = useState(false) // FIXED: Added missing state
   const [formData, setFormData] = useState({
     name: '',
     category: 'back' as const,
     target_sets: 3,
     target_reps: 12,
-    target_weight:0,
+    target_weight: 0,
     gif_url: '',
   })
 
@@ -68,7 +69,7 @@ export default function AdminExercisesPage() {
       category: 'back',
       target_sets: 3,
       target_reps: 12,
-      target_weight:0,
+      target_weight: 0,
       gif_url: '',
     })
     setDialogOpen(true)
@@ -88,9 +89,12 @@ export default function AdminExercisesPage() {
     setDialogOpen(true)
   }
 
+  // FIXED: Correct function for saving exercises (not workout logs)
   const handleSaveExercise = async () => {
+    setSaving(true)
     try {
       if (isEditing && selectedExercise) {
+        // Update existing exercise
         const { error } = await supabase
           .from('exercises')
           .update({
@@ -106,14 +110,17 @@ export default function AdminExercisesPage() {
         if (error) throw error
         toast.success('Exercise updated successfully!')
       } else {
-        const { error } = await supabase.from('exercises').insert({
-          name: formData.name,
-          category: formData.category,
-          target_sets: formData.target_sets,
-          target_reps: formData.target_reps,
-          target_weight: formData.target_weight,
-          gif_url: formData.gif_url,
-        })
+        // Create new exercise
+        const { error } = await supabase
+          .from('exercises')
+          .insert({
+            name: formData.name,
+            category: formData.category,
+            target_sets: formData.target_sets,
+            target_reps: formData.target_reps,
+            target_weight: formData.target_weight,
+            gif_url: formData.gif_url,
+          })
 
         if (error) throw error
         toast.success('Exercise created successfully!')
@@ -124,6 +131,8 @@ export default function AdminExercisesPage() {
     } catch (err) {
       console.error('Error saving exercise:', err)
       toast.error('Failed to save exercise')
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -156,10 +165,7 @@ export default function AdminExercisesPage() {
       const response = await fetch(`/api/search-exercise?q=${encodeURIComponent(formData.name)}`)
       const data = await response.json()
 
-      console.log('API Response:', data) // Debug: see what we get back
-
       if (response.ok) {
-        // The API should return an array directly now
         const exercises = Array.isArray(data) ? data : []
         
         if (exercises.length === 0) {
@@ -180,7 +186,6 @@ export default function AdminExercisesPage() {
   }
 
   const handleSelectGif = (exercise: any) => {
-    // Handle different field names for the image/GIF URL
     const imageUrl = exercise.gifUrl || exercise.imageUrl || exercise.gif || ''
     
     setFormData({ ...formData, gif_url: imageUrl })
@@ -193,6 +198,7 @@ export default function AdminExercisesPage() {
     chest: 'var(--primary)',
     shoulder: 'var(--accent)',
     legs: 'var(--muted)',
+    arm: '#FF6B6B',
   }
 
   if (loading) {
@@ -347,10 +353,11 @@ export default function AdminExercisesPage() {
                   </Button>
                   <Button
                     onClick={handleSaveExercise}
+                    disabled={saving}
                     className="flex-1 neo-button bg-primary text-primary-foreground font-mono"
                   >
                     <Save className="w-4 h-4 mr-2" />
-                    Save
+                    {saving ? 'Saving...' : 'Save'}
                   </Button>
                 </div>
               </div>
@@ -378,7 +385,6 @@ export default function AdminExercisesPage() {
                       onClick={() => handleSelectGif(result)}
                       className="neo-card bg-muted rounded-2xl overflow-hidden hover:scale-105 hover:shadow-xl transition-all text-left border-2 border-transparent hover:border-primary aspect-square flex flex-col"
                     >
-                      {/* Image fills most of the card */}
                       <div className="relative flex-1 min-h-0 bg-slate-200">
                         <img
                           src={result.gifUrl || result.imageUrl}
@@ -390,7 +396,6 @@ export default function AdminExercisesPage() {
                         />
                       </div>
                       
-                      {/* Compact text at bottom */}
                       <div className="p-3 bg-card/90 backdrop-blur-sm">
                         <p className="text-xs font-bold text-foreground line-clamp-1">
                           {result.name}
@@ -408,7 +413,7 @@ export default function AdminExercisesPage() {
               )}
             </DialogContent>
           </Dialog>
-          </div>
+        </div>
 
         {/* Exercises by Category */}
         {categories.map((category) => {

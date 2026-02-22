@@ -53,9 +53,9 @@ export default function ExercisePage() {
         setActualReps(data.actual_reps)
         setActualWeight(data.weight || 0)
       } else {
-        setActualSets(selectedExercise.target_sets)
-        setActualReps(selectedExercise.target_reps)
-        setActualWeight(selectedExercise.target_weight || 0)
+        setActualSets(0)
+        setActualReps(0)
+        setActualWeight(0)
       }
     } catch (err) {
       console.error('Error fetching workout log:', err)

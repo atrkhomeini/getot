@@ -15,6 +15,7 @@ const categoryColors: Record<string, string> = {
   legs: 'var(--accent)',
   chest: 'var(--primary)',
   shoulder: 'var(--muted)',
+  arm: '#FF6B6B',
 }
 
 const categoryIcons: Record<string, string> = {
@@ -22,6 +23,7 @@ const categoryIcons: Record<string, string> = {
   legs: '🦵',
   chest: '💪',
   shoulder: '🎯',
+  arm: '💪',
 }
 
 export default function HomePage() {
@@ -205,7 +207,7 @@ export default function HomePage() {
     return acc
   }, {} as Record<string, (Exercise & { completed?: boolean })[]>)
 
-  const categoryOrder = ['back', 'chest', 'shoulder', 'legs']
+  const categoryOrder = ['back', 'chest', 'shoulder', 'legs', 'arm']
 
   const getSequenceForDay = (dayNumber: number) => {
     return weekSequence.filter(s => s.day_number === dayNumber)
