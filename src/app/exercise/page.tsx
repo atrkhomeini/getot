@@ -5,10 +5,14 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { Database } from '@/lib/supabase'
 import UserLayout from '@/components/user-layout'
-import { CounterInput } from '@/components/counter-input'
 import { useAppStore } from '@/lib/store'
-import { ArrowLeft, Save, TrendingUp, Target } from 'lucide-react'
+import { ArrowLeft, Target } from 'lucide-react'
 import { toast } from 'sonner'
+import { 
+  ExerciseLogCardWithPerSet, 
+  ExerciseLogDataWithPerSet 
+} from '@/components/exercise-log-card-with-perset'
+import { SetData } from '@/components/per-set-tracker'
 
 type Exercise = Database['public']['Tables']['exercises']['Row']
 type WorkoutLog = Database['public']['Tables']['workout_logs']['Row']
@@ -17,11 +21,8 @@ export default function ExercisePage() {
   const router = useRouter()
   const { currentUser, selectedExercise } = useAppStore()
   const [workoutLog, setWorkoutLog] = useState<WorkoutLog | null>(null)
-  const [actualSets, setActualSets] = useState(0)
-  const [actualReps, setActualReps] = useState(0)
-  const [actualWeight, setActualWeight] = useState(0)
+  const [existingSetsData, setExistingSetsData] = useState<SetData[]>([])
   const [loading, setLoading] = useState(true)
-  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     if (!currentUser || !selectedExercise) {
@@ -41,7 +42,7 @@ export default function ExercisePage() {
         .eq('user_id', currentUser.id)
         .eq('exercise_id', selectedExercise.id)
         .eq('date', new Date().toISOString().split('T')[0])
-        .single()
+        .maybeSingle()
 
       if (error && error.code !== 'PGRST116') {
         throw error
@@ -49,13 +50,27 @@ export default function ExercisePage() {
 
       if (data) {
         setWorkoutLog(data)
-        setActualSets(data.actual_sets)
-        setActualReps(data.actual_reps)
-        setActualWeight(data.weight || 0)
+        // Parse existing sets_data or create from summary
+        if (data.sets_data && Array.isArray(data.sets_data) && data.sets_data.length > 0) {
+          setExistingSetsData(data.sets_data as SetData[])
+        } else {
+          // Fallback: create sets from summary values
+          const fallbackSets: SetData[] = Array.from(
+            { length: selectedExercise.target_sets }, 
+            (_, i) => ({
+              set_number: i + 1,
+              target_weight: selectedExercise.target_weight,
+              target_reps: selectedExercise.target_reps,
+              actual_weight: data.weight || 0,
+              actual_reps: Math.round((data.actual_reps || 0) / (selectedExercise.target_sets || 1)),
+              completed: false,
+            })
+          )
+          setExistingSetsData(fallbackSets)
+        }
       } else {
-        setActualSets(0)
-        setActualReps(0)
-        setActualWeight(0)
+        // No existing log - initialize empty sets
+        setExistingSetsData([])
       }
     } catch (err) {
       console.error('Error fetching workout log:', err)
@@ -64,65 +79,72 @@ export default function ExercisePage() {
     }
   }
 
-const handleSave = async () => {
-  if (!currentUser || !selectedExercise) return
+  const handleSaveLog = async (logData: ExerciseLogDataWithPerSet) => {
+    if (!currentUser || !selectedExercise) return
 
-  setSaving(true)
-  try {
-    // Step 1: Save workout log (existing code)
-    if (workoutLog) {
-      const { error } = await supabase
-        .from('workout_logs')
-        .update({
-          actual_sets: actualSets,
-          actual_reps: actualReps,
-          weight: actualWeight,
+    try {
+      // Step 1: Save workout log with sets_data
+      if (workoutLog) {
+        const { error } = await supabase
+          .from('workout_logs')
+          .update({
+            actual_sets: logData.actual_sets,
+            actual_reps: logData.actual_reps,
+            weight: logData.actual_weight,
+            sets_data: logData.sets_data,
+          })
+          .eq('id', workoutLog.id)
+        if (error) throw error
+      } else {
+        const { error } = await supabase
+          .from('workout_logs')
+          .insert({
+            user_id: currentUser.id,
+            exercise_id: selectedExercise.id,
+            actual_sets: logData.actual_sets,
+            actual_reps: logData.actual_reps,
+            weight: logData.actual_weight,
+            date: new Date().toISOString().split('T')[0],
+            sets_data: logData.sets_data,
+          })
+        if (error) throw error
+      }
+
+      // Step 2: Mark exercise as completed in workout session
+      const { data: progress } = await supabase
+        .from('user_progress')
+        .select('current_day_number')
+        .eq('user_id', currentUser.id)
+        .single()
+
+      if (progress) {
+        await fetch('/api/workout-sessions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: currentUser.id,
+            day_number: progress.current_day_number,
+            exercise_id: selectedExercise.id,
+            completed: true,
+          }),
         })
-        .eq('id', workoutLog.id)
-      if (error) throw error
-    } else {
-      const { error } = await supabase
-        .from('workout_logs')
-        .insert({
-          user_id: currentUser.id,
-          exercise_id: selectedExercise.id,
-          actual_sets: actualSets,
-          actual_reps: actualReps,
-          weight: actualWeight,
-          date: new Date().toISOString().split('T')[0],
-        })
-      if (error) throw error
+      }
+
+      toast.success('Workout log saved!')
+      
+      // Refresh the log data
+      await fetchWorkoutLog()
+      
+      // Navigate back to home after short delay
+      setTimeout(() => {
+        router.push('/home')
+      }, 1000)
+    } catch (err) {
+      console.error('Error saving workout log:', err)
+      toast.error('Failed to save workout log')
+      throw err // Re-throw to let component handle loading state
     }
-
-    // Step 2: Mark exercise as completed in workout session
-    const { data: progress } = await supabase
-      .from('user_progress')
-      .select('current_day_number')
-      .eq('user_id', currentUser.id)
-      .single()
-
-    if (progress) {
-      await fetch('/api/workout-sessions', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          user_id: currentUser.id,
-          day_number: progress.current_day_number,
-          exercise_id: selectedExercise.id,
-          completed: true,
-        }),
-      })
-    }
-
-    toast.success('Workout log saved!')
-    await fetchWorkoutLog()
-  } catch (err) {
-    console.error('Error saving workout log:', err)
-    toast.error('Failed to save workout log')
-  } finally {
-    setSaving(false)
   }
-}
 
   if (loading || !selectedExercise) {
     return (
@@ -133,19 +155,6 @@ const handleSave = async () => {
       </UserLayout>
     )
   }
-
-  const completionPercentage = Math.min(
-    Math.round(
-      Math.min(
-        (actualSets / selectedExercise.target_sets) * 100,
-        (actualReps / selectedExercise.target_reps) * 100,
-        selectedExercise.target_weight > 0 
-          ? (actualWeight / selectedExercise.target_weight) * 100 
-          : 100
-      )
-    ),
-    100
-  )
 
   return (
     <UserLayout>
@@ -188,108 +197,49 @@ const handleSave = async () => {
           </div>
         )}
 
-        {/* Target vs Actual */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-          {/* Target */}
-          <div className="neo-card bg-card rounded-2xl p-6">
-            <div className="flex items-center gap-3 mb-4">
-              <Target className="w-6 h-6 text-secondary" />
-              <h2 className="text-xl font-bold text-foreground">Target</h2>
-            </div>
-            <div className="space-y-3">
-              <div className="flex justify-between items-center">
-                <span className="text-muted-foreground font-mono">Sets</span>
-                <span className="text-2xl font-bold text-foreground font-mono">
-                  {selectedExercise.target_sets}
-                </span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-muted-foreground font-mono">Reps</span>
-                <span className="text-2xl font-bold text-foreground font-mono">
-                  {selectedExercise.target_reps}
-                </span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-muted-foreground font-mono">Weight</span>
-                <span className="text-2xl font-bold text-foreground font-mono">
-                  {selectedExercise.target_weight || 0}<span className="text-lg ml-1">kg</span>
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* Actual */}
-          <div className="neo-card bg-card rounded-2xl p-6">
-            <div className="flex items-center gap-3 mb-6">
-              <TrendingUp className="w-6 h-6 text-primary" />
-              <h2 className="text-xl font-bold text-foreground">Actual</h2>
-            </div>
-            
-            <div className="space-y-4">
-              <div className="flex items-center gap-4">
-                <span className="text-sm font-mono text-muted-foreground w-12">Sets</span>
-                <CounterInput
-                  value={actualSets}
-                  onChange={setActualSets}
-                  min={0}
-                  max={20}
-                  step={1}
-                  compact
-                  className="flex-1"
-                />
-              </div>
-              
-              <div className="flex items-center gap-4">
-                <span className="text-sm font-mono text-muted-foreground w-12">Reps</span>
-                <CounterInput
-                  value={actualReps}
-                  onChange={setActualReps}
-                  min={0}
-                  max={100}
-                  step={1}
-                  compact
-                  className="flex-1"
-                />
-              </div>
-              
-              <div className="flex items-center gap-4">
-                <span className="text-sm font-mono text-muted-foreground w-12">Weight</span>
-                <CounterInput
-                  value={actualWeight}
-                  onChange={setActualWeight}
-                  min={0}
-                  max={500}
-                  step={0.5}
-                  unit="kg"
-                  compact
-                  className="flex-1"
-                />
-              </div>
-            </div>
-          </div>
-        {/* Progress */}
+        {/* Target Summary */}
         <div className="neo-card bg-card rounded-2xl p-6 mb-6">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-muted-foreground font-mono">Completion</span>
-            <span className="font-bold text-foreground font-mono">{completionPercentage}%</span>
+          <div className="flex items-center gap-3 mb-4">
+            <Target className="w-6 h-6 text-secondary" />
+            <h2 className="text-xl font-bold text-foreground">Target</h2>
           </div>
-          <div className="h-4 bg-muted rounded-full overflow-hidden border-2 border-border">
-            <div
-              className="h-full bg-primary transition-all duration-300"
-              style={{ width: `${completionPercentage}%` }}
-            />
+          <div className="grid grid-cols-3 gap-4">
+            <div className="text-center p-3 bg-muted rounded-xl">
+              <p className="text-3xl font-bold text-foreground font-mono">
+                {selectedExercise.target_sets}
+              </p>
+              <p className="text-sm text-muted-foreground font-mono">Sets</p>
+            </div>
+            <div className="text-center p-3 bg-muted rounded-xl">
+              <p className="text-3xl font-bold text-foreground font-mono">
+                {selectedExercise.target_reps}
+              </p>
+              <p className="text-sm text-muted-foreground font-mono">Reps</p>
+            </div>
+            <div className="text-center p-3 bg-muted rounded-xl">
+              <p className="text-3xl font-bold text-foreground font-mono">
+                {selectedExercise.target_weight || 0}
+              </p>
+              <p className="text-sm text-muted-foreground font-mono">kg</p>
+            </div>
           </div>
         </div>
-      </div>
-        {/* Save Button */}
-        <button
-          onClick={handleSave}
-          disabled={saving}
-          className="neo-button w-full py-4 rounded-xl bg-primary text-primary-foreground font-bold text-lg flex items-center justify-center gap-2 hover:bg-primary/90 disabled:opacity-50"
-        >
-          <Save className="w-5 h-5" />
-          {saving ? 'Saving...' : 'Save Workout'}
-        </button>
+
+        {/* Per-Set Log Card */}
+        <ExerciseLogCardWithPerSet
+          exercise={{
+            id: selectedExercise.id,
+            name: selectedExercise.name,
+            category: selectedExercise.category,
+            target_sets: selectedExercise.target_sets,
+            target_reps: selectedExercise.target_reps,
+            target_weight: selectedExercise.target_weight || 0,
+            gif_url: selectedExercise.gif_url,
+          }}
+          existingSetsData={existingSetsData}
+          onSave={handleSaveLog}
+          isExpanded={true}
+        />
       </div>
     </UserLayout>
   )

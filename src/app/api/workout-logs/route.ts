@@ -47,11 +47,19 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// POST - Create a new workout log
+// POST - Create a new workout log with per-set data
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const { user_id, exercise_id, actual_sets, actual_reps, weight, date } = body
+    const { 
+      user_id, 
+      exercise_id, 
+      actual_sets, 
+      actual_reps, 
+      weight, 
+      date,
+      sets_data 
+    } = body
 
     // Validation
     if (!user_id || !exercise_id) {
@@ -68,6 +76,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Validate sets_data structure if provided
+    if (sets_data && !Array.isArray(sets_data)) {
+      return NextResponse.json(
+        { error: 'sets_data must be an array' },
+        { status: 400 }
+      )
+    }
+
     const { data, error } = await supabase
       .from('workout_logs')
       .insert({
@@ -77,6 +93,7 @@ export async function POST(request: NextRequest) {
         actual_reps,
         weight: weight || 0,
         date: date || new Date().toISOString().split('T')[0],
+        sets_data: sets_data || [],
       })
       .select()
       .single()
@@ -93,11 +110,11 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// PUT - Update a workout log
+// PUT - Update a workout log with per-set data
 export async function PUT(request: NextRequest) {
   try {
     const body = await request.json()
-    const { id, actual_sets, actual_reps, weight } = body
+    const { id, actual_sets, actual_reps, weight, sets_data } = body
 
     if (!id) {
       return NextResponse.json(
@@ -106,13 +123,20 @@ export async function PUT(request: NextRequest) {
       )
     }
 
+    const updateData: Record<string, any> = {
+      actual_sets,
+      actual_reps,
+      weight: weight || 0,
+    }
+
+    // Include sets_data if provided
+    if (sets_data !== undefined) {
+      updateData.sets_data = sets_data
+    }
+
     const { data, error } = await supabase
       .from('workout_logs')
-      .update({
-        actual_sets,
-        actual_reps,
-        weight: weight || 0,
-      })
+      .update(updateData)
       .eq('id', id)
       .select()
       .single()
