@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import UserLayout from '@/components/user-layout'
 import { useAppStore } from '@/lib/store'
-import { LogOut as CheckOut, Clock, Timer, CheckCircle2 } from 'lucide-react'
+import { LogOut as CheckOut, Clock, Timer, CheckCircle2, ArrowRight } from 'lucide-react'
 import { toast } from 'sonner'
 
 export default function CheckOutPage() {
@@ -15,6 +15,8 @@ export default function CheckOutPage() {
   const [duration, setDuration] = useState<string>('0:00')
   const [checkedOut, setCheckedOut] = useState(false)
   const [checkOutTime, setCheckOutTime] = useState<string | null>(null)
+  const [nextDay, setNextDay] = useState<number | null>(null)
+  const [currentDay, setCurrentDay] = useState<number | null>(null)
 
   useEffect(() => {
     if (!currentUser) {
@@ -29,6 +31,7 @@ export default function CheckOutPage() {
     }
 
     setCanCheckOut(true)
+    fetchCurrentDay()
 
     // Update duration every second
     const interval = setInterval(() => {
@@ -45,6 +48,27 @@ export default function CheckOutPage() {
     return () => clearInterval(interval)
   }, [currentUser, currentCheckIn, checkedOut, router])
 
+  const fetchCurrentDay = async () => {
+    if (!currentUser) return
+
+    try {
+      const { data: progress, error } = await supabase
+        .from('user_progress')
+        .select('current_day_number')
+        .eq('user_id', currentUser.id)
+        .maybeSingle()
+
+      if (progress) {
+        setCurrentDay(progress.current_day_number)
+      } else {
+        setCurrentDay(1) // Default to Day 1
+      }
+    } catch (err) {
+      console.error('Error fetching current day:', err)
+      setCurrentDay(1)
+    }
+  }
+
   const handleCheckOut = async () => {
     if (!currentUser || !currentCheckIn) return
 
@@ -53,7 +77,8 @@ export default function CheckOutPage() {
       const checkIn = new Date(currentCheckIn.check_in_time)
       const durationMinutes = Math.floor((now.getTime() - checkIn.getTime()) / (1000 * 60))
 
-      const { data, error } = await supabase
+      // Step 1: Update check_in record
+      const { data, error: checkInError } = await supabase
         .from('check_ins')
         .update({
           check_out_time: now.toISOString(),
@@ -63,15 +88,86 @@ export default function CheckOutPage() {
         .select()
         .single()
 
-      if (error) throw error
+      if (checkInError) {
+        console.error('Check-in update error:', checkInError)
+        throw checkInError
+      }
+
+      // Step 2: Get user's current progress (or create if not exists)
+      let progress = null
+      const { data: existingProgress, error: progressError } = await supabase
+        .from('user_progress')
+        .select('*')
+        .eq('user_id', currentUser.id)
+        .maybeSingle()
+
+      if (existingProgress) {
+        progress = existingProgress
+      } else {
+        // Create progress record if it doesn't exist
+        const { data: newProgress, error: createError } = await supabase
+          .from('user_progress')
+          .insert({
+            user_id: currentUser.id,
+            current_day_number: 1,
+            total_workouts_completed: 0,
+          })
+          .select()
+          .single()
+
+        if (createError) {
+          console.error('Create progress error:', createError)
+          throw createError
+        }
+        progress = newProgress
+      }
+
+      // Step 3: Mark current session as complete (if exists)
+      await supabase
+        .from('workout_sessions')
+        .update({
+          is_complete: true,
+          completed_at: now.toISOString(),
+        })
+        .eq('user_id', currentUser.id)
+        .eq('day_number', progress.current_day_number)
+        .eq('is_complete', false)
+
+      // Step 4: Get max day number to know when to cycle
+      const { data: maxDayResult } = await supabase
+        .from('workout_sequences')
+        .select('day_number')
+        .eq('user_id', currentUser.id)
+        .order('day_number', { ascending: false })
+        .limit(1)
+
+      const maxDay = maxDayResult?.[0]?.day_number || 1
+      const nextDayNumber = progress.current_day_number >= maxDay ? 1 : progress.current_day_number + 1
+
+      // Step 5: Advance user to next day
+      const { error: updateError } = await supabase
+        .from('user_progress')
+        .update({
+          current_day_number: nextDayNumber,
+          last_workout_date: now.toISOString().split('T')[0],
+          total_workouts_completed: progress.total_workouts_completed + 1,
+          updated_at: now.toISOString(),
+        })
+        .eq('user_id', currentUser.id)
+
+      if (updateError) {
+        console.error('Progress update error:', updateError)
+        throw updateError
+      }
 
       setCheckedOut(true)
       setCheckOutTime(data.check_out_time)
+      setNextDay(nextDayNumber)
       setCurrentCheckIn(null)
       toast.success(`Checked out! Workout duration: ${durationMinutes} minutes 🎉`)
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error checking out:', err)
-      toast.error('Failed to check out')
+      toast.error(err?.message || 'Failed to check out')
     }
   }
 
@@ -130,6 +226,18 @@ export default function CheckOutPage() {
                 </span>
               </div>
 
+              {/* Current Day Info */}
+              {currentDay && (
+                <div className="mb-8 p-4 bg-muted rounded-xl">
+                  <p className="font-mono text-sm text-muted-foreground mb-1">
+                    Completing Day {currentDay}
+                  </p>
+                  <p className="font-mono text-xs text-muted-foreground">
+                    Will advance to next day after check-out
+                  </p>
+                </div>
+              )}
+
               <button
                 onClick={handleCheckOut}
                 className="neo-button w-full py-6 rounded-2xl bg-destructive text-destructive-foreground font-bold text-2xl flex items-center justify-center gap-3 hover:bg-destructive/90 hover:scale-105 transition-all"
@@ -166,18 +274,33 @@ export default function CheckOutPage() {
                 Checked out at
               </p>
               {checkOutTime && (
-                <p className="font-mono text-3xl font-bold text-primary mb-8">
+                <p className="font-mono text-3xl font-bold text-primary mb-4">
                   {formatTime(checkOutTime)}
                 </p>
               )}
-              {currentCheckIn && (
-                <div className="flex items-center justify-center gap-3 mb-8">
-                  <Timer className="w-8 h-8 text-secondary" />
-                  <span className="font-mono text-2xl font-bold text-foreground">
-                    {duration}
-                  </span>
+              
+              {/* Duration */}
+              <div className="flex items-center justify-center gap-3 mb-6">
+                <Timer className="w-6 h-6 text-secondary" />
+                <span className="font-mono text-xl font-bold text-foreground">
+                  {duration}
+                </span>
+              </div>
+
+              {/* Day Progression Info */}
+              {nextDay !== null && (
+                <div className="mb-8 p-4 bg-green-500/10 border-2 border-green-500 rounded-xl">
+                  <div className="flex items-center justify-center gap-2 mb-2">
+                    <span className="font-mono font-bold text-green-600">Day {currentDay}</span>
+                    <ArrowRight className="w-4 h-4 text-green-600" />
+                    <span className="font-mono font-bold text-green-600">Day {nextDay}</span>
+                  </div>
+                  <p className="font-mono text-xs text-green-600">
+                    Your progress has been saved!
+                  </p>
                 </div>
               )}
+
               <button
                 onClick={() => router.push('/home')}
                 className="neo-button w-full py-6 rounded-2xl bg-primary text-primary-foreground font-bold text-xl flex items-center justify-center gap-3 hover:bg-primary/90 hover:scale-105 transition-all"

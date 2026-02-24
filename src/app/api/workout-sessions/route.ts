@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
       .eq('is_complete', false)
       .order('started_at', { ascending: false })
       .limit(1)
-      .single()
+      .maybeSingle()
 
     let session
     if (existingSession) {
@@ -113,62 +113,8 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Check if session is complete (all exercises for this day done)
-    // First, get all exercises for this day in the sequence
-    const { data: dayExercises } = await supabase
-      .from('workout_sequences')
-      .select('exercise_id')
-      .eq('user_id', user_id)
-      .eq('day_number', day_number)
-
-    const totalExercises = dayExercises?.length || 0
-    const completedExercises = session.exercises_completed?.length || 0
-
-    if (totalExercises > 0 && completedExercises >= totalExercises && !session.is_complete) {
-      // Mark session as complete
-      const { data: completedSession, error: completeError } = await supabase
-        .from('workout_sessions')
-        .update({
-          is_complete: true,
-          completed_at: new Date().toISOString(),
-        })
-        .eq('id', session.id)
-        .select()
-        .single()
-
-      if (completeError) throw completeError
-      session = completedSession
-
-      // Auto-advance user progress
-      const { data: progress } = await supabase
-        .from('user_progress')
-        .select('*')
-        .eq('user_id', user_id)
-        .single()
-
-      if (progress) {
-        // Get max day number in sequence to know when to cycle
-        const { data: maxDayResult } = await supabase
-          .from('workout_sequences')
-          .select('day_number')
-          .eq('user_id', user_id)
-          .order('day_number', { ascending: false })
-          .limit(1)
-
-        const maxDay = maxDayResult?.[0]?.day_number || 1
-        const nextDay = progress.current_day_number >= maxDay ? 1 : progress.current_day_number + 1
-
-        await supabase
-          .from('user_progress')
-          .update({
-            current_day_number: nextDay,
-            last_workout_date: today,
-            total_workouts_completed: progress.total_workouts_completed + 1,
-            updated_at: new Date().toISOString(),
-          })
-          .eq('user_id', user_id)
-      }
-    }
+    // Note: Day advancement is now handled in check-out, not here
+    // This keeps the session tracking separate from day progression
 
     return NextResponse.json(session)
   } catch (error) {
