@@ -16,14 +16,17 @@ const CATEGORY_COLORS: Record<string, string> = {
   back: 'hsl(var(--secondary))',
   chest: 'hsl(var(--primary))',
   shoulder: 'hsl(var(--accent))',
-  legs: 'hsl(var(--muted))',
+  leg: 'hsl(var(--muted))',
+  arm: '#FF6B6B',
 }
 
+// Updated: Using PNG icons instead of emojis
 const CATEGORY_ICONS: Record<string, string> = {
-  back: '🏋️',
-  legs: '🦵',
-  chest: '💪',
-  shoulder: '🎯',
+  back: '/icons/back.png',
+  leg: '/icons/leg.png',
+  chest: '/icons/chest.png',
+  shoulder: '/icons/shoulder.png',
+  arm: '/icons/arm.png',
 }
 
 export default function AdminSequencePage() {
@@ -353,9 +356,17 @@ export default function AdminSequencePage() {
                             <div className="w-6 h-6 rounded-full bg-border flex items-center justify-center text-xs font-bold text-muted-foreground">
                               {index + 1}
                             </div>
-                            <span className="text-lg">
-                              {CATEGORY_ICONS[item.exercises?.category] || '💪'}
-                            </span>
+                            {/* Category Icon - PNG */}
+                            <div className="w-6 h-6 flex items-center justify-center">
+                              <img 
+                                src={CATEGORY_ICONS[item.exercises?.category] || '/icons/arm.png'} 
+                                alt={item.exercises?.category || 'exercise'}
+                                className="w-5 h-5 object-contain"
+                                onError={(e) => {
+                                  e.currentTarget.style.display = 'none'
+                                }}
+                              />
+                            </div>
                             <div
                               className="w-3 h-3 rounded flex-shrink-0"
                               style={{ backgroundColor: CATEGORY_COLORS[item.exercises?.category] || 'hsl(var(--muted))' }}
@@ -440,9 +451,17 @@ export default function AdminSequencePage() {
                       className="w-full p-4 rounded-xl bg-muted hover:bg-muted/80 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-left"
                     >
                       <div className="flex items-center gap-3">
-                        <span className="text-xl">
-                          {CATEGORY_ICONS[exercise.category] || '💪'}
-                        </span>
+                        {/* Category Icon - PNG */}
+                        <div className="w-6 h-6 flex items-center justify-center">
+                          <img 
+                            src={CATEGORY_ICONS[exercise.category] || '/icons/arm.png'} 
+                            alt={exercise.category || 'exercise'}
+                            className="w-5 h-5 object-contain"
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none'
+                            }}
+                          />
+                        </div>
                         <div
                           className="w-3 h-3 rounded flex-shrink-0"
                           style={{ backgroundColor: CATEGORY_COLORS[exercise.category] || 'hsl(var(--muted))' }}
