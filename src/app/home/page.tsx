@@ -18,12 +18,13 @@ const categoryColors: Record<string, string> = {
   arm: '#FF6B6B',
 }
 
+// Updated: Using PNG icons instead of emojis
 const categoryIcons: Record<string, string> = {
-  back: '🏋️',
-  leg: '🦵',
-  chest: '💪',
-  shoulder: '🎯',
-  arm: '💪',
+  back: '/icons/back.png',
+  leg: '/icons/leg.png',
+  chest: '/icons/chest.png',
+  shoulder: '/icons/shoulder.png',
+  arm: '/icons/arm.png',
 }
 
 export default function HomePage() {
@@ -370,7 +371,22 @@ export default function HomePage() {
               return (
                 <div key={category} className="mb-10">
                   <div className="flex items-center gap-3 mb-4">
-                    <span className="text-3xl">{categoryIcons[category]}</span>
+                    {/* Category Icon - PNG */}
+                    <div className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center overflow-hidden">
+                      <img 
+                        src={categoryIcons[category]} 
+                        alt={category}
+                        className="w-7 h-7 object-contain"
+                        onError={(e) => {
+                          // Fallback to emoji if image fails to load
+                          e.currentTarget.style.display = 'none'
+                          const fallback = document.createElement('span')
+                          fallback.className = 'text-2xl'
+                          fallback.textContent = '💪'
+                          e.currentTarget.parentElement?.appendChild(fallback)
+                        }}
+                      />
+                    </div>
                     <h2 className="text-2xl font-bold text-foreground capitalize">
                       {category}
                     </h2>
