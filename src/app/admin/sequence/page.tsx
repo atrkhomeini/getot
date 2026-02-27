@@ -4,26 +4,31 @@ import { useEffect, useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { Database } from '@/lib/supabase'
 import AdminLayout from '@/components/admin-layout'
-import { List, Plus, Trash2, Users, Dumbbell, ArrowRight, CheckCircle2 } from 'lucide-react'
+import { List, Plus, Trash2, Users, Dumbbell, ArrowRight, CheckCircle2, Globe } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { toast } from 'sonner'
 
 type User = Database['public']['Tables']['users']['Row']
-type Exercise = Database['public']['Tables']['exercises']['Row']
+type Exercise = Database['public']['Tables']['exercises']['Row'] & {
+  users?: { name: string } | null
+}
 
 const CATEGORY_COLORS: Record<string, string> = {
   back: 'hsl(var(--secondary))',
   chest: 'hsl(var(--primary))',
   shoulder: 'hsl(var(--accent))',
-  legs: 'hsl(var(--muted))',
+  leg: 'hsl(var(--muted))',
+  arm: '#FF6B6B',
 }
 
+// Updated: Using PNG icons
 const CATEGORY_ICONS: Record<string, string> = {
-  back: '🏋️',
-  legs: '🦵',
-  chest: '💪',
-  shoulder: '🎯',
+  back: '/icons/back.png',
+  leg: '/icons/leg.png',
+  chest: '/icons/chest.png',
+  shoulder: '/icons/shoulder.png',
+  arm: '/icons/arm.png',
 }
 
 export default function AdminSequencePage() {
@@ -44,7 +49,13 @@ export default function AdminSequencePage() {
     try {
       const [usersRes, exercisesRes] = await Promise.all([
         supabase.from('users').select('*').order('name'),
-        supabase.from('exercises').select('*').order('category'),
+        supabase
+          .from('exercises')
+          .select(`
+            *,
+            users (name)
+          `)
+          .order('category'),
       ])
 
       if (usersRes.error) throw usersRes.error
@@ -65,7 +76,10 @@ export default function AdminSequencePage() {
         .from('workout_sequences')
         .select(`
           *,
-          exercises (*)
+          exercises (
+            *,
+            users (name)
+          )
         `)
         .eq('user_id', userId)
         .order('day_number', { ascending: true })
@@ -189,6 +203,26 @@ export default function AdminSequencePage() {
 
   const getSequenceForDay = (dayNumber: number) => {
     return sequence.filter(s => s.day_number === dayNumber)
+  }
+
+  // Filter exercises: show only user-specific + global exercises
+  const getFilteredExercises = () => {
+    if (!selectedUser) return exercises
+    
+    return exercises.filter(ex => 
+      !ex.created_for_user_id || // Global exercise
+      ex.created_for_user_id === selectedUser.id // User-specific exercise
+    )
+  }
+
+  // Group exercises by "Created For" for better organization in dialog
+  const getGroupedExercises = () => {
+    const filtered = getFilteredExercises()
+    
+    const globalExercises = filtered.filter(ex => !ex.created_for_user_id)
+    const userExercises = filtered.filter(ex => ex.created_for_user_id === selectedUser?.id)
+    
+    return { globalExercises, userExercises }
   }
 
   const maxDay = sequence.length > 0 ? Math.max(...sequence.map(s => s.day_number)) : 0
@@ -353,17 +387,32 @@ export default function AdminSequencePage() {
                             <div className="w-6 h-6 rounded-full bg-border flex items-center justify-center text-xs font-bold text-muted-foreground">
                               {index + 1}
                             </div>
-                            <span className="text-lg">
-                              {CATEGORY_ICONS[item.exercises?.category] || '💪'}
-                            </span>
+                            {/* Category Icon - PNG */}
+                            <div className="w-6 h-6 flex items-center justify-center">
+                              <img 
+                                src={CATEGORY_ICONS[item.exercises?.category] || '/icons/arm.png'} 
+                                alt={item.exercises?.category || 'exercise'}
+                                className="w-5 h-5 object-contain"
+                                onError={(e) => {
+                                  e.currentTarget.style.display = 'none'
+                                }}
+                              />
+                            </div>
                             <div
                               className="w-3 h-3 rounded flex-shrink-0"
                               style={{ backgroundColor: CATEGORY_COLORS[item.exercises?.category] || 'hsl(var(--muted))' }}
                             />
                             <div className="flex-1 min-w-0">
-                              <p className="font-bold text-foreground text-sm">
-                                {item.exercises?.name}
-                              </p>
+                              <div className="flex items-center gap-2">
+                                <p className="font-bold text-foreground text-sm">
+                                  {item.exercises?.name}
+                                </p>
+                                {item.exercises?.users?.name && (
+                                  <span className="text-xs px-1.5 py-0.5 rounded bg-primary/10 text-primary font-mono">
+                                    {item.exercises.users.name}
+                                  </span>
+                                )}
+                              </div>
                               <p className="text-xs font-mono text-muted-foreground">
                                 {item.exercises?.target_sets} × {item.exercises?.target_reps} × {(item.exercises?.target_weight || 0)}kg
                               </p>
@@ -421,55 +470,151 @@ export default function AdminSequencePage() {
           <DialogContent className="neo-card bg-card max-w-2xl max-h-[80vh] overflow-hidden">
             <DialogHeader>
               <DialogTitle className="font-bold text-2xl">
-                Add Exercise to Day {selectedDay}
+                Add Exercise to Day {selectedDay} for {selectedUser?.name}
               </DialogTitle>
+              <p className="text-sm text-muted-foreground font-mono">
+                Showing exercises created for {selectedUser?.name} and global exercises
+              </p>
             </DialogHeader>
             
             <div className="overflow-y-auto max-h-[60vh]">
-              <div className="space-y-2">
-                {exercises.map(exercise => {
-                  const isAlreadyInSequence = sequence.some(
-                    s => s.exercise_id === exercise.id && s.day_number === selectedDay
-                  )
-                  
-                  return (
-                    <button
-                      key={exercise.id}
-                      onClick={() => selectedDay !== null && !isAlreadyInSequence && handleAddExercise(exercise.id, selectedDay)}
-                      disabled={isAlreadyInSequence}
-                      className="w-full p-4 rounded-xl bg-muted hover:bg-muted/80 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-left"
-                    >
-                      <div className="flex items-center gap-3">
-                        <span className="text-xl">
-                          {CATEGORY_ICONS[exercise.category] || '💪'}
-                        </span>
-                        <div
-                          className="w-3 h-3 rounded flex-shrink-0"
-                          style={{ backgroundColor: CATEGORY_COLORS[exercise.category] || 'hsl(var(--muted))' }}
-                        />
-                        <div className="flex-1 min-w-0">
-                          <p className="font-bold text-foreground truncate">{exercise.name}</p>
-                          <p className="text-xs font-mono text-muted-foreground">
-                            {exercise.target_sets} × {exercise.target_reps} × {(exercise.target_weight || 0)}kg
-                          </p>
-                        </div>
-                        {isAlreadyInSequence ? (
-                          <span className="text-xs font-mono text-muted-foreground">Already added</span>
-                        ) : (
-                          <Plus className="w-5 h-5 text-primary" />
-                        )}
-                      </div>
-                    </button>
-                  )
-                })}
+              {(() => {
+                const { globalExercises, userExercises } = getGroupedExercises()
                 
-                {exercises.length === 0 && (
-                  <div className="text-center py-8 text-muted-foreground">
-                    <Dumbbell className="w-12 h-12 mx-auto mb-2 opacity-50" />
-                    <p className="font-mono text-sm">No exercises available</p>
+                return (
+                  <div className="space-y-4">
+                    {/* User-specific exercises */}
+                    {userExercises.length > 0 && (
+                      <div>
+                        <div className="flex items-center gap-2 mb-2 px-1">
+                          <div 
+                            className="w-3 h-3 rounded-full" 
+                            style={{ backgroundColor: selectedUser?.avatar_color }}
+                          />
+                          <span className="text-sm font-bold text-foreground font-mono">
+                            Created for {selectedUser?.name}
+                          </span>
+                          <span className="text-xs text-muted-foreground font-mono">
+                            ({userExercises.length})
+                          </span>
+                        </div>
+                        <div className="space-y-2">
+                          {userExercises.map(exercise => {
+                            const isAlreadyInSequence = sequence.some(
+                              s => s.exercise_id === exercise.id && s.day_number === selectedDay
+                            )
+                            
+                            return (
+                              <button
+                                key={exercise.id}
+                                onClick={() => selectedDay !== null && !isAlreadyInSequence && handleAddExercise(exercise.id, selectedDay)}
+                                disabled={isAlreadyInSequence}
+                                className="w-full p-4 rounded-xl bg-primary/5 border-2 border-primary/20 hover:bg-primary/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-left"
+                              >
+                                <div className="flex items-center gap-3">
+                                  <div className="w-6 h-6 flex items-center justify-center">
+                                    <img 
+                                      src={CATEGORY_ICONS[exercise.category] || '/icons/arm.png'} 
+                                      alt={exercise.category}
+                                      className="w-5 h-5 object-contain"
+                                      onError={(e) => {
+                                        e.currentTarget.style.display = 'none'
+                                      }}
+                                    />
+                                  </div>
+                                  <div
+                                    className="w-3 h-3 rounded flex-shrink-0"
+                                    style={{ backgroundColor: CATEGORY_COLORS[exercise.category] || 'hsl(var(--muted))' }}
+                                  />
+                                  <div className="flex-1 min-w-0">
+                                    <p className="font-bold text-foreground truncate">{exercise.name}</p>
+                                    <p className="text-xs font-mono text-muted-foreground">
+                                      {exercise.target_sets} × {exercise.target_reps} × {(exercise.target_weight || 0)}kg
+                                    </p>
+                                  </div>
+                                  {isAlreadyInSequence ? (
+                                    <span className="text-xs font-mono text-muted-foreground">Already added</span>
+                                  ) : (
+                                    <Plus className="w-5 h-5 text-primary" />
+                                  )}
+                                </div>
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Global exercises */}
+                    {globalExercises.length > 0 && (
+                      <div>
+                        <div className="flex items-center gap-2 mb-2 px-1">
+                          <Globe className="w-4 h-4 text-muted-foreground" />
+                          <span className="text-sm font-bold text-foreground font-mono">
+                            Global Exercises
+                          </span>
+                          <span className="text-xs text-muted-foreground font-mono">
+                            ({globalExercises.length})
+                          </span>
+                        </div>
+                        <div className="space-y-2">
+                          {globalExercises.map(exercise => {
+                            const isAlreadyInSequence = sequence.some(
+                              s => s.exercise_id === exercise.id && s.day_number === selectedDay
+                            )
+                            
+                            return (
+                              <button
+                                key={exercise.id}
+                                onClick={() => selectedDay !== null && !isAlreadyInSequence && handleAddExercise(exercise.id, selectedDay)}
+                                disabled={isAlreadyInSequence}
+                                className="w-full p-4 rounded-xl bg-muted hover:bg-muted/80 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-left"
+                              >
+                                <div className="flex items-center gap-3">
+                                  <div className="w-6 h-6 flex items-center justify-center">
+                                    <img 
+                                      src={CATEGORY_ICONS[exercise.category] || '/icons/arm.png'} 
+                                      alt={exercise.category}
+                                      className="w-5 h-5 object-contain"
+                                      onError={(e) => {
+                                        e.currentTarget.style.display = 'none'
+                                      }}
+                                    />
+                                  </div>
+                                  <div
+                                    className="w-3 h-3 rounded flex-shrink-0"
+                                    style={{ backgroundColor: CATEGORY_COLORS[exercise.category] || 'hsl(var(--muted))' }}
+                                  />
+                                  <div className="flex-1 min-w-0">
+                                    <p className="font-bold text-foreground truncate">{exercise.name}</p>
+                                    <p className="text-xs font-mono text-muted-foreground">
+                                      {exercise.target_sets} × {exercise.target_reps} × {(exercise.target_weight || 0)}kg
+                                    </p>
+                                  </div>
+                                  {isAlreadyInSequence ? (
+                                    <span className="text-xs font-mono text-muted-foreground">Already added</span>
+                                  ) : (
+                                    <Plus className="w-5 h-5 text-primary" />
+                                  )}
+                                </div>
+                              </button>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* No exercises */}
+                    {globalExercises.length === 0 && userExercises.length === 0 && (
+                      <div className="text-center py-8 text-muted-foreground">
+                        <Dumbbell className="w-12 h-12 mx-auto mb-2 opacity-50" />
+                        <p className="font-mono text-sm">No exercises available for this user</p>
+                        <p className="font-mono text-xs mt-1">Create exercises for {selectedUser?.name} in the Exercises page</p>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
+                )
+              })()}
             </div>
           </DialogContent>
         </Dialog>
