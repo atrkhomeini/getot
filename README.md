@@ -1,150 +1,71 @@
-# 💪 Gym Guide and Logbook
+# 💪 Getot — Gym Logbook App
 
-A comprehensive gym guide and logbook web application built with Next.js 16, Supabase, and Tailwind CSS. Track workouts, monitor progress, and manage gym members with a beautiful neo-brutalism design.
+A comprehensive gym guide and logbook to track workouts, monitor progress, and manage gym users.
+
+---
+
+## 🛠️ Tech Stack
+
+| Category | Technology |
+|----------|------------|
+| Frontend | ![Next.js](https://img.shields.io/badge/Next.js-000000?logo=nextdotjs&logoColor=white) ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white) ![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-06B6D4?logo=tailwindcss&logoColor=white) ![React](https://img.shields.io/badge/React-61DAFB?logo=react&logoColor=black) |
+| Backend | ![Supabase](https://img.shields.io/badge/Supabase-3FCF8E?logo=supabase&logoColor=white) ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-316192?logo=postgresql&logoColor=white) |
+| UI Components | ![Radix UI](https://img.shields.io/badge/Radix_UI-161618?logo=radixui&logoColor=white) ![shadcn/ui](https://img.shields.io/badge/shadcn%2Fui-000000?logo=shadcnui&logoColor=white) ![Recharts](https://img.shields.io/badge/Recharts-FF6384?logo=chartdotjs&logoColor=white) |
+| State & Storage | ![Zustand](https://img.shields.io/badge/Zustand-443E38?logo=react&logoColor=white) |
+| DevOps | ![Vercel](https://img.shields.io/badge/Vercel-000000?logo=vercel&logoColor=white) ![GitHub](https://img.shields.io/badge/GitHub-181717?logo=github&logoColor=white) |
+
+---
 
 ## ✨ Features
 
-### For Users:
-- **🎬 Netflix-style Login**: User grid display for easy profile access
-- **🏋️ Home Page**: Exercise cards grouped by muscle group with animated GIFs
-- **📊 Exercise Details**: Track target vs actual sets and reps with progress visualization
-- **📈 Analytics**:
-  - Line chart comparing actual vs target performance
-  - GitHub-style consistency graph for workout tracking
-- **✅ Check-in/Check-out**: Simple one-button tracking for gym visits
-- **🎨 Beautiful UI**: Neo-brutalism design inspired by saweria.co
+- **User Authentication** — Simple user selection with password login
+- **Workout Sequences** — Admin can create rolling day-by-day workout plans per user
+- **Exercise Tracking** — Log sets, reps, and weight for each exercise with per-set breakdown
+- **Check-in / Check-out** — Track gym session time and auto-advance workout day
+- **Analytics** — View progress charts, consistency graph, and per-category stats
+- **Admin Dashboard** — Manage users, exercises, and sequences
+- **PWA Support** — Installable on mobile devices
+- **Dark / Light Mode** — Theme toggle with neo-brutalism design
 
-### For Owner/Admin:
-- **📊 Dashboard**: Real-time overview of all user activity and gym statistics
-- **👥 User Management**: Add, edit, and delete gym members
-- **💪 Exercise Management**:
-  - Create custom exercises with target sets/reps
-  - Search and add GIFs from ExerciseDB API
-  - Organize by muscle groups (back, chest, shoulders, legs)
-- **📈 Analytics**: View detailed performance metrics for all users
-- **🔐 Admin Panel**: Database-style interface for complete gym management
+---
 
-## 🎨 Design
-
-- **Style**: Neo-brutalism (inspired by saweria.co)
-- **Font**: Consolas for monospace elements, Space Grotesk for headings
-- **Themes**:
-  - 🌈 Colorful (default) - Bright, vibrant colors
-  - 🌙 Dark - Dark mode for night workouts
-- **Responsive**: Mobile-first design with smooth animations
-
-## 🚀 Quick Start
+## 🚀 Getting Started
 
 ### Prerequisites
-
-- Node.js 18+ and bun
-- A Supabase account (free tier available)
-- (Optional) ExerciseDB API key for GIF search
+- Node.js 18+
+- A [Supabase](https://supabase.com) project
 
 ### Installation
 
-1. **Install dependencies**:
-   ```bash
-   bun install
-   ```
+```bash
+# Clone the repository
+git clone https://github.com/your-username/getot.git
+cd getot
 
-2. **Set up environment variables**:
-   Copy `.env.local` and add your credentials:
-   ```env
-   NEXT_PUBLIC_SUPABASE_URL=your-supabase-url
-   NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key
-   EXERCISEDB_API_KEY=your-exercisedb-api-key  # Optional
-   ```
+# Install dependencies
+npm install
 
-3. **Set up Supabase database**:
-   - Go to your Supabase project → SQL Editor
-   - Run the SQL from `supabase-schema.sql`
+# Set up environment variables
+cp .env.example .env.local
+```
 
-4. **Start development server**:
-   ```bash
-   bun run dev
-   ```
+### Environment Variables
 
-5. **Open** [http://localhost:3000](http://localhost:3000)
+```env
+NEXT_PUBLIC_SUPABASE_URL=your_supabase_url
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
+EXERCISEDB_API_KEY=your_rapidapi_key  # optional
+```
 
-### Default Credentials
+### Run Development Server
 
-- **Owner Login**: Username "Owner", Password "admin123"
-- ⚠️ **Important**: Change the default password after first login!
+```bash
+npm run dev
+```
 
-## 📱 Usage
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
-### For Gym Members:
-
-1. **Login**: Select your profile and enter your password
-2. **Check In**: Tap "Check In" when you arrive at the gym
-3. **Workout**: Go to Home → Select exercise → Log your sets/reps
-4. **Check Out**: Tap "Check Out" when you're done
-5. **Track Progress**: View analytics to see your improvements
-
-### For Gym Owner:
-
-1. **Login**: Select Owner profile and enter password
-2. **Dashboard**: View overall gym statistics and recent activity
-3. **Manage Users**: Add new members or edit existing ones
-4. **Create Exercises**:
-   - Go to Exercises → Add Exercise
-   - Enter name, category, target sets/reps
-   - Click the search icon to find GIFs from ExerciseDB
-5. **View Analytics**: See detailed performance metrics for all users
-
-## 🗄️ Database Schema
-
-### Tables:
-- **users**: Gym members and owner accounts
-- **exercises**: Workout exercises with targets and GIFs
-- **workout_logs**: User's actual workout records
-- **check_ins**: Check-in/check-out timestamps and duration
-
-## 🏋️ Default Exercises
-
-**Back:**
-- Lat Pulldown
-- Rowing
-- Back-up Machine
-
-**Legs:**
-- Barbell Squat
-- Hack Squat
-- Hamstring Curl
-
-**Chest:**
-- Incline Press
-- Chest Fly
-- Dips
-
-**Shoulder:**
-- Shoulder Press
-- Lateral Raise
-- Reverse Peck Deck
-- Dumbbell Rear Delt
-
-## 🛠️ Technology Stack
-
-- **Framework**: Next.js 16 with App Router
-- **Language**: TypeScript 5
-- **Styling**: Tailwind CSS 4
-- **Database**: Supabase (PostgreSQL)
-- **UI Components**: shadcn/ui
-- **State Management**: Zustand
-- **Charts**: Recharts
-- **Icons**: Lucide React
-- **Animations**: Framer Motion
-
-## 📦 Deployment to Vercel
-
-1. Push your code to GitHub
-2. Import repository in [Vercel](https://vercel.com)
-3. Add environment variables:
-   - `NEXT_PUBLIC_SUPABASE_URL`
-   - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-   - `EXERCISEDB_API_KEY` (optional)
-4. Deploy! 🚀
+---
 
 ## 📁 Project Structure
 
