@@ -6,12 +6,48 @@ import { supabase } from '@/lib/supabase'
 import { Database } from '@/lib/supabase'
 import UserLayout from '@/components/user-layout'
 import { useAppStore } from '@/lib/store'
-import { BarChart3, TrendingUp, Calendar, Flame, Clock, ArrowRight, ArrowDown, ArrowUp } from 'lucide-react'
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
+import { 
+  BarChart3, 
+  TrendingUp, 
+  Calendar, 
+  Flame, 
+  Clock, 
+  ArrowRight, 
+  ArrowDown, 
+  ArrowUp,
+  Sun,
+  Target,
+  Activity
+} from 'lucide-react'
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
+import { cn } from '@/lib/utils'
 
 type Exercise = Database['public']['Tables']['exercises']['Row']
-type WorkoutLog = Database['public']['Tables']['workout_logs']['Row']
+type WorkoutLog = Database['public']['Tables']['workout_logs']['Row'] & {
+  metrics?: {
+    workingVolume: number
+    totalVolume: number
+    failureRate: number
+    intensityScore: number
+    avgWorkingWeight: number
+    setDistribution: { warmup: number; normal: number; failure: number }
+    totalReps: number
+    workingReps: number
+    totalSets: number
+    workingSets: number
+  }
+}
 type CheckIn = Database['public']['Tables']['check_ins']['Row']
+
+type SetData = {
+  set_number: number
+  target_weight: number
+  target_reps: number
+  actual_weight: number
+  actual_reps: number
+  completed: boolean
+  set_type: 'warmup' | 'normal' | 'failure'
+}
 
 const categoryColors: Record<string, string> = {
   back: 'var(--secondary)',
@@ -22,11 +58,17 @@ const categoryColors: Record<string, string> = {
 }
 
 const categoryIcons: Record<string, string> = {
-  back: '🏋️',
-  chest: '💪',
-  shoulder: '🎯',
-  leg: '🦵',
-  arm: '💪',
+  back: '/icons/back.png',
+  chest: '/icons/chest.png',
+  shoulder: '/icons/shoulder.png',
+  leg: '/icons/leg.png',
+  arm: '/icons/arm.png',
+}
+
+const SET_TYPE_COLORS = {
+  warmup: '#EAB308', // Yellow
+  normal: '#6B7280', // Gray
+  failure: '#EF4444', // Red
 }
 
 export default function AnalyticsPage() {
@@ -39,6 +81,7 @@ export default function AnalyticsPage() {
   const [selectedPeriod, setSelectedPeriod] = useState<'week' | 'month'>('week')
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const [categoryAnalytics, setCategoryAnalytics] = useState<Record<string, any>>({})
+  const [summaryMetrics, setSummaryMetrics] = useState<any>(null)
 
   useEffect(() => {
     if (!currentUser) {
@@ -48,18 +91,90 @@ export default function AnalyticsPage() {
     fetchData()
   }, [currentUser, router])
 
+  useEffect(() => {
+    if (workoutLogs.length > 0) {
+      calculateEnhancedAnalytics()
+    }
+  }, [workoutLogs, selectedPeriod])
+
   const fetchData = async () => {
     if (!currentUser) return
 
     try {
+      const days = selectedPeriod === 'week' ? 7 : 30
+      const startDate = new Date()
+      startDate.setDate(startDate.getDate() - days)
+
       // Fetch workout logs
       const { data: logs, error: logsError } = await supabase
         .from('workout_logs')
         .select('*')
         .eq('user_id', currentUser.id)
+        .gte('date', startDate.toISOString().split('T')[0])
         .order('date', { ascending: true })
 
       if (logsError) throw logsError
+
+      // Process logs to add metrics
+      const processedLogs = (logs || []).map(log => {
+        const setsData: SetData[] = (log.sets_data || []) as SetData[]
+        
+        const warmupSets = setsData.filter(s => s.set_type === 'warmup')
+        const normalSets = setsData.filter(s => s.set_type === 'normal')
+        const failureSets = setsData.filter(s => s.set_type === 'failure')
+        const workingSets = setsData.filter(s => s.set_type !== 'warmup')
+
+        const workingVolume = workingSets.reduce(
+          (sum, s) => sum + (s.actual_weight * s.actual_reps),
+          0
+        )
+
+        const totalVolume = setsData.reduce(
+          (sum, s) => sum + (s.actual_weight * s.actual_reps),
+          0
+        )
+
+        const failureRate = setsData.length > 0
+          ? (failureSets.length / setsData.length) * 100
+          : 0
+
+        const avgWorkingWeight = workingSets.length > 0
+          ? workingSets.reduce((sum, s) => sum + s.actual_weight, 0) / workingSets.length
+          : 0
+
+        const avgTargetWeight = workingSets.length > 0
+          ? workingSets.reduce((sum, s) => sum + s.target_weight, 0) / workingSets.length
+          : 0
+
+        const intensityScore = avgTargetWeight > 0
+          ? Math.min(100, (avgWorkingWeight / avgTargetWeight) * 100)
+          : 0
+
+        const setDistribution = {
+          warmup: warmupSets.length,
+          normal: normalSets.length,
+          failure: failureSets.length,
+        }
+
+        const totalReps = setsData.reduce((sum, s) => sum + s.actual_reps, 0)
+        const workingReps = workingSets.reduce((sum, s) => sum + s.actual_reps, 0)
+
+        return {
+          ...log,
+          metrics: {
+            workingVolume,
+            totalVolume,
+            failureRate,
+            intensityScore,
+            avgWorkingWeight,
+            setDistribution,
+            totalReps,
+            workingReps,
+            totalSets: setsData.length,
+            workingSets: workingSets.length,
+          }
+        }
+      })
 
       // Fetch check-ins
       const { data: ci, error: ciError } = await supabase
@@ -77,12 +192,9 @@ export default function AnalyticsPage() {
 
       if (exError) throw exError
 
-      setWorkoutLogs(logs || [])
+      setWorkoutLogs(processedLogs)
       setCheckIns(ci || [])
       setExercises(ex || [])
-
-      // Calculate category analytics
-      calculateCategoryAnalytics(logs || [], ex || [])
     } catch (err) {
       console.error('Error fetching analytics data:', err)
     } finally {
@@ -90,12 +202,14 @@ export default function AnalyticsPage() {
     }
   }
 
-  const calculateCategoryAnalytics = (logs: WorkoutLog[], exerciseList: Exercise[]) => {
-    const categoryData: Record<string, any[]> = {}
-    const categoryProgress: Record<string, any> = {}
+  const calculateEnhancedAnalytics = () => {
+    if (workoutLogs.length === 0) return
 
-    logs.forEach(log => {
-      const exercise = exerciseList.find(ex => ex.id === log.exercise_id)
+    // Group by category
+    const categoryData: Record<string, any[]> = {}
+
+    workoutLogs.forEach(log => {
+      const exercise = exercises.find(ex => ex.id === log.exercise_id)
       if (!exercise) return
 
       const cat = exercise.category
@@ -114,85 +228,87 @@ export default function AnalyticsPage() {
         target_sets: exercise.target_sets,
         target_reps: exercise.target_reps,
         target_weight: exercise.target_weight || 0,
-        volume: (log.actual_sets * log.actual_reps * (log.weight || 0)),
+        metrics: log.metrics,
       })
     })
 
     // Calculate progress for each category
+    const categoryProgress: Record<string, any> = {}
+
     Object.keys(categoryData).forEach(cat => {
       const catLogs = categoryData[cat]
       
       if (catLogs.length === 0) return
 
-      // Sort by date
       catLogs.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
 
       const firstLog = catLogs[0]
       const lastLog = catLogs[catLogs.length - 1]
 
-      // Calculate average volume for first and last sessions
-      const firstVolume = catLogs
+      // Working volume growth
+      const firstWorkingVolume = catLogs
         .filter(l => l.date === firstLog.date)
-        .reduce((sum, l) => sum + l.volume, 0) / 
-        Math.max(1, catLogs.filter(l => l.date === firstLog.date).length)
+        .reduce((sum, l) => sum + (l.metrics?.workingVolume || 0), 0)
 
-      const lastVolume = catLogs
+      const lastWorkingVolume = catLogs
         .filter(l => l.date === lastLog.date)
-        .reduce((sum, l) => sum + l.volume, 0) / 
-        Math.max(1, catLogs.filter(l => l.date === lastLog.date).length)
+        .reduce((sum, l) => sum + (l.metrics?.workingVolume || 0), 0)
 
-      // Calculate growth percentage
-      const growth = firstVolume > 0 
-        ? ((lastVolume - firstVolume) / firstVolume) * 100 
+      const workingVolumeGrowth = firstWorkingVolume > 0
+        ? ((lastWorkingVolume - firstWorkingVolume) / firstWorkingVolume) * 100
         : 0
 
-      // Get total sessions
+      // Aggregate metrics
+      const totalWorkingVolume = catLogs.reduce((sum, l) => sum + (l.metrics?.workingVolume || 0), 0)
+      const avgFailureRate = catLogs.reduce((sum, l) => sum + (l.metrics?.failureRate || 0), 0) / catLogs.length
+      const avgIntensity = catLogs.reduce((sum, l) => sum + (l.metrics?.intensityScore || 0), 0) / catLogs.length
+
+      // Set type totals
+      const setTotals = { warmup: 0, normal: 0, failure: 0 }
+      catLogs.forEach(l => {
+        if (l.metrics?.setDistribution) {
+          setTotals.warmup += l.metrics.setDistribution.warmup
+          setTotals.normal += l.metrics.setDistribution.normal
+          setTotals.failure += l.metrics.setDistribution.failure
+        }
+      })
+
       const uniqueDates = [...new Set(catLogs.map(l => l.date))]
+      const maxWeight = Math.max(...catLogs.map(l => l.weight || 0), 0)
 
       categoryProgress[cat] = {
         category: cat,
         total_workouts: uniqueDates.length,
         first_workout_date: firstLog.date,
         last_workout_date: lastLog.date,
-        avg_volume_start: Math.round(firstVolume),
-        avg_volume_end: Math.round(lastVolume),
-        growth_percentage: Math.round(growth),
+        working_volume: totalWorkingVolume,
+        working_volume_growth: Math.round(workingVolumeGrowth),
+        avg_failure_rate: Math.round(avgFailureRate * 10) / 10,
+        avg_intensity: Math.round(avgIntensity),
+        max_weight: maxWeight,
+        set_totals: setTotals,
         logs: catLogs,
       }
     })
 
     setCategoryAnalytics(categoryProgress)
-  }
 
-  const calculateSimpleMetrics = (logs: any[]) => {
-    if (logs.length === 0) return null
-
-    // Get latest workout logs
-    const latestDate = logs[logs.length - 1].date
-    const latestLogs = logs.filter(l => l.date === latestDate)
-
-    if (latestLogs.length === 0) return null
-
-    // Max weight lifted
-    const maxWeight = Math.max(...latestLogs.map(l => l.weight || 0), 0)
-
-    // Total reps in latest session
-    const totalReps = latestLogs.reduce((sum, l) => sum + (l.actual_sets * l.actual_reps), 0)
-
-    // Average sets and reps
-    const avgSets = Math.round(latestLogs.reduce((sum, l) => sum + l.actual_sets, 0) / latestLogs.length)
-    const avgReps = Math.round(latestLogs.reduce((sum, l) => sum + l.actual_reps, 0) / latestLogs.length)
-
-    // Total exercises
-    const totalExercises = logs.length
-
-    return {
-      maxWeight,
-      totalReps,
-      avgSets,
-      avgReps,
-      totalExercises,
+    // Calculate overall summary
+    const summary = {
+      totalWorkingVolume: workoutLogs.reduce((sum, l) => sum + (l.metrics?.workingVolume || 0), 0),
+      totalVolume: workoutLogs.reduce((sum, l) => sum + (l.metrics?.totalVolume || 0), 0),
+      avgFailureRate: workoutLogs.reduce((sum, l) => sum + (l.metrics?.failureRate || 0), 0) / Math.max(1, workoutLogs.length),
+      avgIntensity: workoutLogs.reduce((sum, l) => sum + (l.metrics?.intensityScore || 0), 0) / Math.max(1, workoutLogs.length),
+      setTotals: {
+        warmup: workoutLogs.reduce((sum, l) => sum + (l.metrics?.setDistribution?.warmup || 0), 0),
+        normal: workoutLogs.reduce((sum, l) => sum + (l.metrics?.setDistribution?.normal || 0), 0),
+        failure: workoutLogs.reduce((sum, l) => sum + (l.metrics?.setDistribution?.failure || 0), 0),
+      },
+      totalSets: workoutLogs.reduce((sum, l) => sum + (l.metrics?.totalSets || 0), 0),
+      workingSets: workoutLogs.reduce((sum, l) => sum + (l.metrics?.workingSets || 0), 0),
     }
+
+    setSummaryMetrics(summary)
   }
 
   // Get last 7 days or 30 days data
@@ -207,7 +323,6 @@ export default function AnalyticsPage() {
 
       const dayLogs = workoutLogs.filter((log) => log.date === dateStr)
       
-      // Filter by selected category if any
       const filteredLogs = selectedCategory
         ? dayLogs.filter(log => {
             const exercise = exercises.find(ex => ex.id === log.exercise_id)
@@ -215,16 +330,25 @@ export default function AnalyticsPage() {
           })
         : dayLogs
 
-      const totalActual = filteredLogs.reduce((sum, log) => sum + log.actual_sets * log.actual_reps, 0)
-      const totalTarget = filteredLogs.reduce((sum, log) => {
-        const exercise = exercises.find((ex) => ex.id === log.exercise_id)
-        return sum + (exercise?.target_sets || 0) * (exercise?.target_reps || 0)
-      }, 0)
+      // Working volume (excludes warmup)
+      const workingVolume = filteredLogs.reduce(
+        (sum, log) => sum + (log.metrics?.workingVolume || 0),
+        0
+      )
+
+      // Total volume (includes warmup) - for comparison
+      const totalVolume = filteredLogs.reduce(
+        (sum, log) => sum + (log.metrics?.totalVolume || 0),
+        0
+      )
+
+      const totalReps = filteredLogs.reduce((sum, log) => sum + (log.metrics?.workingReps || 0), 0)
 
       data.push({
         date: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-        actual: totalActual,
-        target: totalTarget,
+        workingVolume,
+        totalVolume,
+        reps: totalReps,
       })
     }
 
@@ -245,7 +369,6 @@ export default function AnalyticsPage() {
 
         let hasWorkout = workoutLogs.some((log) => log.date === dateStr)
         
-        // Filter by selected category if any
         if (selectedCategory) {
           hasWorkout = workoutLogs.some((log) => {
             if (log.date !== dateStr) return false
@@ -273,13 +396,10 @@ export default function AnalyticsPage() {
     return data
   }
 
-  // Calculate stats
   const getStats = () => {
     const totalWorkouts = checkIns.length
     const totalDuration = checkIns.reduce((sum, ci) => sum + (ci.duration_minutes || 0), 0)
     const avgDuration = totalWorkouts > 0 ? Math.round(totalDuration / totalWorkouts) : 0
-    const totalExercises = workoutLogs.length
-    const totalReps = workoutLogs.reduce((sum, log) => sum + log.actual_sets * log.actual_reps, 0)
 
     // Current streak
     let streak = 0
@@ -301,8 +421,6 @@ export default function AnalyticsPage() {
       totalWorkouts,
       totalDuration,
       avgDuration,
-      totalExercises,
-      totalReps,
       streak,
     }
   }
@@ -330,7 +448,12 @@ export default function AnalyticsPage() {
     'bg-primary',
   ]
 
-  const weekLabels = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+  // Pie chart data for set type distribution
+  const pieData = summaryMetrics ? [
+    { name: 'Warm-up', value: summaryMetrics.setTotals.warmup, color: SET_TYPE_COLORS.warmup },
+    { name: 'Normal', value: summaryMetrics.setTotals.normal, color: SET_TYPE_COLORS.normal },
+    { name: 'Failure', value: summaryMetrics.setTotals.failure, color: SET_TYPE_COLORS.failure },
+  ] : []
 
   return (
     <UserLayout>
@@ -339,32 +462,34 @@ export default function AnalyticsPage() {
         <div className="mb-8 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
             <h1 className="text-3xl md:text-4xl font-bold text-foreground mb-2">
-              Analytics
+              Enhanced Analytics
             </h1>
             <p className="font-mono text-muted-foreground">
               {selectedCategory 
                 ? `${selectedCategory.charAt(0).toUpperCase() + selectedCategory.slice(1)} Progress` 
-                : 'Track your progress and consistency'}
+                : 'Working volume excludes warm-up sets'}
             </p>
           </div>
           <div className="flex gap-2 flex-wrap">
             <button
               onClick={() => setSelectedPeriod('week')}
-              className={`px-4 py-2 rounded-lg font-mono text-sm font-bold transition-all ${
+              className={cn(
+                "px-4 py-2 rounded-lg font-mono text-sm font-bold transition-all",
                 selectedPeriod === 'week'
-                  ? 'neo-button bg-primary text-primary-foreground'
-                  : 'bg-muted text-muted-foreground hover:text-foreground'
-              }`}
+                  ? "neo-button bg-primary text-primary-foreground"
+                  : "bg-muted text-muted-foreground hover:text-foreground"
+              )}
             >
               Week
             </button>
             <button
               onClick={() => setSelectedPeriod('month')}
-              className={`px-4 py-2 rounded-lg font-mono text-sm font-bold transition-all ${
+              className={cn(
+                "px-4 py-2 rounded-lg font-mono text-sm font-bold transition-all",
                 selectedPeriod === 'month'
-                  ? 'neo-button bg-primary text-primary-foreground'
-                  : 'bg-muted text-muted-foreground hover:text-foreground'
-              }`}
+                  ? "neo-button bg-primary text-primary-foreground"
+                  : "bg-muted text-muted-foreground hover:text-foreground"
+              )}
             >
               Month
             </button>
@@ -379,93 +504,261 @@ export default function AnalyticsPage() {
           </div>
         </div>
 
-        {/* Stats Grid */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
-          <div className="neo-card bg-card rounded-xl p-4 text-center">
-            <BarChart3 className="w-6 h-6 mx-auto mb-2 text-primary" />
-            <p className="font-mono text-2xl font-bold text-foreground">{stats.totalWorkouts}</p>
-            <p className="font-mono text-xs text-muted-foreground">Workouts</p>
+        {/* Enhanced Stats Grid */}
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-8">
+          {/* Working Volume */}
+          <div className="neo-card bg-card rounded-xl p-4 text-center col-span-2">
+            <Activity className="w-6 h-6 mx-auto mb-2 text-primary" />
+            <p className="font-mono text-3xl font-bold text-foreground">
+              {summaryMetrics?.totalWorkingVolume?.toLocaleString() || 0}
+              <span className="text-sm ml-1">kg</span>
+            </p>
+            <p className="font-mono text-xs text-muted-foreground">Working Volume</p>
+            <p className="font-mono text-[10px] text-green-600 mt-1">Excludes warm-up</p>
           </div>
+
+          {/* Failure Rate */}
           <div className="neo-card bg-card rounded-xl p-4 text-center">
-            <Clock className="w-6 h-6 mx-auto mb-2 text-secondary" />
-            <p className="font-mono text-2xl font-bold text-foreground">{stats.avgDuration}m</p>
-            <p className="font-mono text-xs text-muted-foreground">Avg Duration</p>
+            <Flame className="w-6 h-6 mx-auto mb-2 text-red-500" />
+            <p className="font-mono text-2xl font-bold text-foreground">
+              {summaryMetrics?.avgFailureRate?.toFixed(1) || 0}%
+            </p>
+            <p className="font-mono text-xs text-muted-foreground">Failure Rate</p>
           </div>
+
+          {/* Intensity Score */}
+          <div className="neo-card bg-card rounded-xl p-4 text-center">
+            <Target className="w-6 h-6 mx-auto mb-2 text-secondary" />
+            <p className="font-mono text-2xl font-bold text-foreground">
+              {summaryMetrics?.avgIntensity?.toFixed(0) || 0}%
+            </p>
+            <p className="font-mono text-xs text-muted-foreground">Intensity</p>
+          </div>
+
+          {/* Day Streak */}
           <div className="neo-card bg-card rounded-xl p-4 text-center">
             <Calendar className="w-6 h-6 mx-auto mb-2 text-accent" />
             <p className="font-mono text-2xl font-bold text-foreground">{stats.streak}</p>
             <p className="font-mono text-xs text-muted-foreground">Day Streak</p>
           </div>
+
+          {/* Total Workouts */}
           <div className="neo-card bg-card rounded-xl p-4 text-center">
-            <Flame className="w-6 h-6 mx-auto mb-2 text-destructive" />
-            <p className="font-mono text-2xl font-bold text-foreground">{stats.totalExercises}</p>
-            <p className="font-mono text-xs text-muted-foreground">Exercises</p>
-          </div>
-          <div className="neo-card bg-card rounded-xl p-4 text-center col-span-2">
-            <TrendingUp className="w-6 h-6 mx-auto mb-2 text-primary" />
-            <p className="font-mono text-2xl font-bold text-foreground">{stats.totalReps}</p>
-            <p className="font-mono text-xs text-muted-foreground">Total Reps</p>
+            <BarChart3 className="w-6 h-6 mx-auto mb-2 text-primary" />
+            <p className="font-mono text-2xl font-bold text-foreground">{stats.totalWorkouts}</p>
+            <p className="font-mono text-xs text-muted-foreground">Workouts</p>
           </div>
         </div>
 
-        {/* Category Progress Cards - NEW SECTION */}
+        {/* Set Type Distribution + Stats */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+          {/* Set Type Pie Chart */}
+          <div className="neo-card bg-card rounded-2xl p-6">
+            <h2 className="text-xl font-bold text-foreground mb-4 flex items-center gap-2">
+              <TrendingUp className="w-5 h-5" />
+              Set Type Distribution
+            </h2>
+            
+            {summaryMetrics && summaryMetrics.totalSets > 0 ? (
+              <>
+                <div className="h-48">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={pieData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={40}
+                        outerRadius={70}
+                        paddingAngle={2}
+                        dataKey="value"
+                      >
+                        {pieData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <Tooltip 
+                        formatter={(value: number) => [`${value} sets`, '']}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* Legend */}
+                <div className="flex items-center justify-center gap-4 mt-4">
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 rounded" style={{ backgroundColor: SET_TYPE_COLORS.warmup }} />
+                    <span className="text-xs font-mono text-muted-foreground">
+                      W: {summaryMetrics.setTotals.warmup}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 rounded" style={{ backgroundColor: SET_TYPE_COLORS.normal }} />
+                    <span className="text-xs font-mono text-muted-foreground">
+                      N: {summaryMetrics.setTotals.normal}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 rounded" style={{ backgroundColor: SET_TYPE_COLORS.failure }} />
+                    <span className="text-xs font-mono text-muted-foreground">
+                      F: {summaryMetrics.setTotals.failure}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Summary */}
+                <div className="mt-4 p-3 bg-muted rounded-lg">
+                  <p className="text-xs font-mono text-center text-muted-foreground">
+                    {summaryMetrics.totalSets} total sets • {summaryMetrics.workingSets} working sets
+                  </p>
+                </div>
+              </>
+            ) : (
+              <div className="h-48 flex items-center justify-center">
+                <p className="font-mono text-muted-foreground text-sm">No data yet</p>
+              </div>
+            )}
+          </div>
+
+          {/* Volume Comparison */}
+          <div className="neo-card bg-card rounded-2xl p-6">
+            <h2 className="text-xl font-bold text-foreground mb-4">Volume Comparison</h2>
+            
+            {summaryMetrics && (
+              <div className="space-y-4">
+                {/* Working Volume */}
+                <div>
+                  <div className="flex justify-between mb-1">
+                    <span className="text-sm font-mono text-muted-foreground">Working Volume</span>
+                    <span className="text-sm font-mono font-bold text-green-600">
+                      {summaryMetrics.totalWorkingVolume.toLocaleString()} kg
+                    </span>
+                  </div>
+                  <div className="h-3 bg-muted rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-green-500"
+                      style={{ 
+                        width: `${Math.min(100, (summaryMetrics.totalWorkingVolume / Math.max(1, summaryMetrics.totalVolume)) * 100)}%` 
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Total Volume (for comparison) */}
+                <div>
+                  <div className="flex justify-between mb-1">
+                    <span className="text-sm font-mono text-muted-foreground">Total Volume</span>
+                    <span className="text-sm font-mono font-bold text-muted-foreground">
+                      {summaryMetrics.totalVolume.toLocaleString()} kg
+                    </span>
+                  </div>
+                  <div className="h-3 bg-muted rounded-full overflow-hidden">
+                    <div className="h-full bg-muted-foreground/30 w-full" />
+                  </div>
+                </div>
+
+                {/* Difference */}
+                <div className="p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <Sun className="w-4 h-4 text-yellow-600" />
+                    <span className="text-xs font-mono text-yellow-600">
+                      Warm-up sets: {(summaryMetrics.totalVolume - summaryMetrics.totalWorkingVolume).toLocaleString()} kg
+                    </span>
+                  </div>
+                  <p className="text-[10px] font-mono text-muted-foreground mt-1">
+                    Not counted in working volume
+                  </p>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Category Progress Cards */}
         <div className="mb-8">
           <h2 className="text-xl font-bold text-foreground mb-4">Progress by Category</h2>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
             {categories.map(category => {
               const data = categoryAnalytics[category]
-              const simpleMetrics = calculateSimpleMetrics(data.logs)
-              const isPositive = data.growth_percentage >= 0
+              if (!data) return null
 
-              if (!simpleMetrics) return null
+              const isPositive = data.working_volume_growth >= 0
 
               return (
                 <button
                   key={category}
                   onClick={() => setSelectedCategory(category)}
-                  className={`neo-card bg-card rounded-xl p-4 text-left transition-all ${
-                    selectedCategory === category ? 'border-2 border-primary' : 'border-2 border-transparent'
-                  }`}
+                  className={cn(
+                    "neo-card bg-card rounded-xl p-4 text-left transition-all",
+                    selectedCategory === category 
+                      ? "border-2 border-primary" 
+                      : "border-2 border-transparent"
+                  )}
                 >
                   <div className="flex items-center gap-2 mb-3">
-                    <span className="text-2xl">{categoryIcons[category] || '💪'}</span>
-                    <h3 className="font-bold text-foreground capitalize">{category}</h3>
+                    <div className="w-8 h-8 rounded-lg overflow-hidden bg-muted flex items-center justify-center">
+                      <img 
+                        src={categoryIcons[category]} 
+                        alt={category}
+                        className="w-6 h-6 object-contain"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none'
+                        }}
+                      />
+                    </div>
+                    <h3 className="font-bold text-foreground capitalize text-sm">{category}</h3>
                   </div>
                   
                   <div className="space-y-2">
-                    {/* Max Weight - MORE RELATABLE */}
-                    <div className="flex items-center justify-between text-sm">
+                    {/* Working Volume */}
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">Working Vol</span>
+                      <span className="font-mono font-bold text-foreground">
+                        {data.working_volume?.toLocaleString() || 0}
+                      </span>
+                    </div>
+
+                    {/* Max Weight */}
+                    <div className="flex items-center justify-between text-xs">
                       <span className="text-muted-foreground">Max Weight</span>
                       <span className="font-mono font-bold text-foreground">
-                        {simpleMetrics.maxWeight > 0 ? `${simpleMetrics.maxWeight}kg` : '-'}
+                        {data.max_weight || 0}kg
                       </span>
                     </div>
                     
-                    {/* Growth Percentage - KEPT */}
-                    <div className={`flex items-center gap-1 text-sm font-mono ${
-                      isPositive ? 'text-green-600' : 'text-red-600'
-                    }`}>
-                      {isPositive ? <ArrowUp className="w-4 h-4" /> : <ArrowDown className="w-4 h-4" />}
+                    {/* Growth */}
+                    <div className={cn(
+                      "flex items-center gap-1 text-xs font-mono",
+                      isPositive ? "text-green-600" : "text-red-600"
+                    )}>
+                      {isPositive ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />}
                       <span className="font-bold">
-                        {isPositive ? '+' : ''}{data.growth_percentage}%
+                        {isPositive ? '+' : ''}{data.working_volume_growth}%
                       </span>
                     </div>
-                    
-                    {/* Average Sets × Reps - FAMILIAR FORMAT */}
-                    <div className="text-xs text-muted-foreground">
-                      Avg: {simpleMetrics.avgSets} × {simpleMetrics.avgReps}
+
+                    {/* Failure Rate */}
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">Failure Rate</span>
+                      <span className="font-mono text-red-500">
+                        {data.avg_failure_rate?.toFixed(1) || 0}%
+                      </span>
                     </div>
 
-                    {/* Total Reps - SIMPLE COUNT */}
-                    <div className="text-xs text-muted-foreground">
-                      {simpleMetrics.totalReps} reps today
+                    {/* Intensity */}
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">Intensity</span>
+                      <span className="font-mono text-secondary">
+                        {data.avg_intensity?.toFixed(0) || 0}%
+                      </span>
                     </div>
 
+                    {/* Mini bar */}
                     <div className="mt-2 h-1.5 bg-muted rounded-full overflow-hidden">
                       <div
                         className="h-full transition-all duration-300"
                         style={{
-                          width: `${Math.min(100, Math.max(0, data.growth_percentage + 50))}%`,
+                          width: `${Math.min(100, Math.max(0, data.avg_intensity || 0))}%`,
                           backgroundColor: categoryColors[category],
                         }}
                       />
@@ -476,7 +769,7 @@ export default function AnalyticsPage() {
             })}
 
             {categories.length === 0 && (
-              <div className="col-span-2 md:col-span-3 lg:col-span-5 text-center py-8 text-muted-foreground font-mono text-sm">
+              <div className="col-span-full text-center py-8 text-muted-foreground font-mono text-sm">
                 Complete some workouts to see category progress
               </div>
             )}
@@ -486,10 +779,15 @@ export default function AnalyticsPage() {
         {/* Performance Chart */}
         <div className="neo-card bg-card rounded-2xl p-6 mb-8">
           <div className="flex items-center justify-between mb-4">
-            <h2 className="text-xl font-bold text-foreground">
-              Performance: Actual vs Target
-              {selectedCategory && ` (${selectedCategory})`}
-            </h2>
+            <div>
+              <h2 className="text-xl font-bold text-foreground">
+                Working Volume Over Time
+                {selectedCategory && ` (${selectedCategory})`}
+              </h2>
+              <p className="text-xs text-muted-foreground font-mono mt-1">
+                Green = Working sets only • Gray = Includes warm-up
+              </p>
+            </div>
           </div>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
@@ -514,20 +812,20 @@ export default function AnalyticsPage() {
                 />
                 <Line
                   type="monotone"
-                  dataKey="actual"
-                  stroke="var(--primary)"
+                  dataKey="workingVolume"
+                  stroke="#22C55E"
                   strokeWidth={3}
-                  dot={{ fill: 'var(--primary)', strokeWidth: 2, r: 4 }}
-                  name="Actual"
+                  dot={{ fill: '#22C55E', strokeWidth: 2, r: 4 }}
+                  name="Working Volume"
                 />
                 <Line
                   type="monotone"
-                  dataKey="target"
-                  stroke="var(--secondary)"
-                  strokeWidth={3}
+                  dataKey="totalVolume"
+                  stroke="#6B7280"
+                  strokeWidth={2}
                   strokeDasharray="5 5"
-                  dot={{ fill: 'var(--secondary)', strokeWidth: 2, r: 4 }}
-                  name="Target"
+                  dot={{ fill: '#6B7280', strokeWidth: 2, r: 3 }}
+                  name="Total Volume"
                 />
               </LineChart>
             </ResponsiveContainer>
@@ -546,7 +844,7 @@ export default function AnalyticsPage() {
                 {week.map((day, dayIndex) => (
                   <div
                     key={`${weekIndex}-${dayIndex}`}
-                    className={`w-4 h-4 rounded-sm ${levelColors[day.level]} transition-all hover:scale-125 cursor-pointer`}
+                    className={cn("w-4 h-4 rounded-sm transition-all hover:scale-125 cursor-pointer", levelColors[day.level])}
                     title={`${day.date}: ${
                       day.level === 4 ? 'Full workout' : day.level === 3 ? 'Checked in' : day.level === 2 ? 'Workout only' : 'No activity'
                     }`}
@@ -559,7 +857,7 @@ export default function AnalyticsPage() {
             <span>Less</span>
             <div className="flex gap-1">
               {levelColors.map((color, index) => (
-                <div key={index} className={`w-3 h-3 rounded-sm ${color}`} />
+                <div key={index} className={cn("w-3 h-3 rounded-sm", color)} />
               ))}
             </div>
             <span>More</span>
@@ -570,75 +868,86 @@ export default function AnalyticsPage() {
         {selectedCategory && categoryAnalytics[selectedCategory] && (
           <div className="neo-card bg-card rounded-2xl p-6 mt-8">
             <div className="flex items-center gap-3 mb-6">
-              <span className="text-3xl">{categoryIcons[selectedCategory]}</span>
+              <div className="w-10 h-10 rounded-lg overflow-hidden bg-muted flex items-center justify-center">
+                <img 
+                  src={categoryIcons[selectedCategory]} 
+                  alt={selectedCategory}
+                  className="w-7 h-7 object-contain"
+                />
+              </div>
               <div>
                 <h2 className="text-2xl font-bold text-foreground capitalize">
                   {selectedCategory} Detailed Progress
                 </h2>
                 <p className="font-mono text-muted-foreground text-sm">
-                  {categoryAnalytics[selectedCategory].total_workouts} workouts completed
+                  {categoryAnalytics[selectedCategory].total_workouts} workouts • Working volume growth: {categoryAnalytics[selectedCategory].working_volume_growth}%
                 </p>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-              {/* Max Weight - MORE RELATABLE */}
+            {/* Detailed Metrics */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
               <div className="p-4 bg-muted rounded-xl">
                 <div className="flex items-center gap-2 mb-2">
-                  <TrendingUp className="w-5 h-5 text-primary" />
-                  <span className="text-sm text-muted-foreground">Max Weight</span>
+                  <Activity className="w-4 h-4 text-green-600" />
+                  <span className="text-xs text-muted-foreground">Working Volume</span>
                 </div>
-                <p className="text-3xl font-bold text-foreground font-mono">
-                  {(() => {
-                    const metrics = calculateSimpleMetrics(categoryAnalytics[selectedCategory].logs)
-                    return metrics ? `${metrics.maxWeight}kg` : '-'
-                  })()}
+                <p className="text-2xl font-bold text-foreground font-mono">
+                  {categoryAnalytics[selectedCategory].working_volume?.toLocaleString() || 0}
                 </p>
               </div>
 
-              {/* Total Reps - SIMPLE COUNT */}
               <div className="p-4 bg-muted rounded-xl">
                 <div className="flex items-center gap-2 mb-2">
-                  <Flame className="w-5 h-5 text-primary" />
-                  <span className="text-sm text-muted-foreground">Total Reps</span>
+                  <Flame className="w-4 h-4 text-red-500" />
+                  <span className="text-xs text-muted-foreground">Failure Rate</span>
                 </div>
-                <p className="text-3xl font-bold text-foreground font-mono">
-                  {(() => {
-                    const metrics = calculateSimpleMetrics(categoryAnalytics[selectedCategory].logs)
-                    return metrics ? metrics.totalReps.toLocaleString() : '-'
-                  })()}
+                <p className="text-2xl font-bold text-foreground font-mono">
+                  {categoryAnalytics[selectedCategory].avg_failure_rate?.toFixed(1) || 0}%
                 </p>
               </div>
 
-              {/* Avg Sets - FAMILIAR */}
               <div className="p-4 bg-muted rounded-xl">
                 <div className="flex items-center gap-2 mb-2">
-                  <BarChart3 className="w-5 h-5 text-primary" />
-                  <span className="text-sm text-muted-foreground">Avg Sets</span>
+                  <Target className="w-4 h-4 text-secondary" />
+                  <span className="text-xs text-muted-foreground">Intensity</span>
                 </div>
-                <p className="text-3xl font-bold text-foreground font-mono">
-                  {(() => {
-                    const metrics = calculateSimpleMetrics(categoryAnalytics[selectedCategory].logs)
-                    return metrics ? metrics.avgSets : '-'
-                  })()}
+                <p className="text-2xl font-bold text-foreground font-mono">
+                  {categoryAnalytics[selectedCategory].avg_intensity?.toFixed(0) || 0}%
                 </p>
               </div>
 
-              {/* Avg Reps - FAMILIAR */}
               <div className="p-4 bg-muted rounded-xl">
                 <div className="flex items-center gap-2 mb-2">
-                  <BarChart3 className="w-5 h-5 text-primary" />
-                  <span className="text-sm text-muted-foreground">Avg Reps</span>
+                  <BarChart3 className="w-4 h-4 text-primary" />
+                  <span className="text-xs text-muted-foreground">Max Weight</span>
                 </div>
-                <p className="text-3xl font-bold text-foreground font-mono">
-                  {(() => {
-                    const metrics = calculateSimpleMetrics(categoryAnalytics[selectedCategory].logs)
-                    return metrics ? metrics.avgReps : '-'
-                  })()}
+                <p className="text-2xl font-bold text-foreground font-mono">
+                  {categoryAnalytics[selectedCategory].max_weight || 0}kg
                 </p>
               </div>
             </div>
 
+            {/* Set Distribution for Category */}
+            <div className="mb-6 p-4 bg-muted rounded-xl">
+              <p className="text-sm font-mono text-muted-foreground mb-3">Set Type Distribution</p>
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 rounded" style={{ backgroundColor: SET_TYPE_COLORS.warmup }} />
+                  <span className="text-xs font-mono">W: {categoryAnalytics[selectedCategory].set_totals?.warmup || 0}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 rounded" style={{ backgroundColor: SET_TYPE_COLORS.normal }} />
+                  <span className="text-xs font-mono">N: {categoryAnalytics[selectedCategory].set_totals?.normal || 0}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="w-4 h-4 rounded" style={{ backgroundColor: SET_TYPE_COLORS.failure }} />
+                  <span className="text-xs font-mono">F: {categoryAnalytics[selectedCategory].set_totals?.failure || 0}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Recent Workouts */}
             <h3 className="font-bold text-foreground mb-4">Recent Workouts</h3>
             <div className="space-y-2 max-h-64 overflow-y-auto">
               {[...categoryAnalytics[selectedCategory].logs]
@@ -656,9 +965,15 @@ export default function AnalyticsPage() {
                       </p>
                     </div>
                     <div className="text-right">
-                      <p className="font-mono font-bold text-foreground text-sm">
-                        {log.weight}kg
-                      </p>
+                      <div className="flex items-center gap-2">
+                        {log.metrics?.setDistribution && (
+                          <div className="flex items-center gap-1 text-[10px] font-mono">
+                            <span className="text-yellow-600">W{log.metrics.setDistribution.warmup}</span>
+                            <span className="text-gray-500">N{log.metrics.setDistribution.normal}</span>
+                            <span className="text-red-500">F{log.metrics.setDistribution.failure}</span>
+                          </div>
+                        )}
+                      </div>
                       <p className="text-xs text-muted-foreground">
                         {new Date(log.date).toLocaleDateString()}
                       </p>

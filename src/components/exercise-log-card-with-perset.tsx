@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { Dumbbell, Check, X, ChevronDown, ChevronUp } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { PerSetTracker, SetData } from '@/components/per-set-tracker'
+import { PerSetTracker, SetData, SetType } from '@/components/per-set-tracker'
 import { cn } from '@/lib/utils'
 
 interface ExerciseLogCardWithPerSetProps {
@@ -40,7 +40,22 @@ export function ExerciseLogCardWithPerSet({
   className,
   isExpanded: initialExpanded = false,
 }: ExerciseLogCardWithPerSetProps) {
-  const [setsData, setSetsData] = useState<SetData[]>(existingSetsData || [])
+  const [setsData, setSetsData] = useState<SetData[]>(() => {
+    if (existingSetsData && existingSetsData.length > 0) {
+      return existingSetsData
+    }
+    // Initialize with normal type
+    return Array.from({ length: exercise.target_sets }, (_, i) => ({
+      set_number: i + 1,
+      target_weight: exercise.target_weight,
+      target_reps: exercise.target_reps,
+      actual_weight: 0,
+      actual_reps: 0,
+      completed: false,
+      set_type: 'normal' as SetType,
+    }))
+  })
+  
   const [isExpanded, setIsExpanded] = useState(initialExpanded)
   const [isSaving, setIsSaving] = useState(false)
 
@@ -50,9 +65,11 @@ export function ExerciseLogCardWithPerSet({
 
   const calculateSummary = () => {
     const completedSets = setsData.filter(set => set.completed).length
+    // Only count working sets for volume (exclude warmup)
     const totalReps = setsData.reduce((sum, set) => sum + set.actual_reps, 0)
-    const totalWeight = setsData.reduce((sum, set) => sum + set.actual_weight, 0)
-    const avgWeight = completedSets > 0 ? totalWeight / completedSets : 0
+    const workingSets = setsData.filter(s => s.set_type !== 'warmup')
+    const totalWeight = workingSets.reduce((sum, set) => sum + set.actual_weight, 0)
+    const avgWeight = workingSets.length > 0 ? totalWeight / workingSets.length : 0
 
     return {
       completedSets,
@@ -91,12 +108,17 @@ export function ExerciseLogCardWithPerSet({
       actual_weight: 0,
       actual_reps: 0,
       completed: false,
+      set_type: 'normal' as SetType,
     }))
     setSetsData(initialSets)
   }
 
   const summary = calculateSummary()
   const isFullyCompleted = summary.completedSets === exercise.target_sets
+
+  // Count set types
+  const warmupCount = setsData.filter(s => s.set_type === 'warmup').length
+  const failureCount = setsData.filter(s => s.set_type === 'failure').length
 
   return (
     <Card className={cn('neo-card bg-card', className, isFullyCompleted && 'border-green-500')}>
@@ -113,9 +135,21 @@ export function ExerciseLogCardWithPerSet({
                 </span>
               )}
             </div>
-            <p className="text-xs font-mono text-muted-foreground capitalize">
-              {exercise.category}
-            </p>
+            <div className="flex items-center gap-2 mt-1">
+              <p className="text-xs font-mono text-muted-foreground capitalize">
+                {exercise.category}
+              </p>
+              {(warmupCount > 0 || failureCount > 0) && (
+                <div className="flex items-center gap-1 text-xs font-mono">
+                  {warmupCount > 0 && (
+                    <span className="text-yellow-600">W:{warmupCount}</span>
+                  )}
+                  {failureCount > 0 && (
+                    <span className="text-red-500">F:{failureCount}</span>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-2">
             {exercise.gif_url && (

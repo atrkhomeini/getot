@@ -103,10 +103,13 @@ export default function LoginPage() {
       </div>
 
       {/* User Grid */}
+      {/* User Grid */}
       <div className="w-full max-w-6xl">
-        <h2 className="text-2xl font-bold text-foreground mb-8 text-center">
-          {selectedUser ? `Welcome, ${selectedUser.name}!` : 'Who\'s working out today?'}
-        </h2>
+        {!selectedUser && (
+          <h2 className="text-2xl font-bold text-foreground mb-8 text-center">
+            Who's working out today?
+          </h2>
+        )}
 
         {!selectedUser ? (
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6 justify-items-center">

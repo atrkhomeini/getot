@@ -12,7 +12,7 @@ import {
   ExerciseLogCardWithPerSet, 
   ExerciseLogDataWithPerSet 
 } from '@/components/exercise-log-card-with-perset'
-import { SetData } from '@/components/per-set-tracker'
+import { SetData, SetType } from '@/components/per-sets-tracker'
 
 type Exercise = Database['public']['Tables']['exercises']['Row']
 type WorkoutLog = Database['public']['Tables']['workout_logs']['Row']
@@ -50,9 +50,20 @@ export default function ExercisePage() {
 
       if (data) {
         setWorkoutLog(data)
+        
         // Parse existing sets_data or create from summary
         if (data.sets_data && Array.isArray(data.sets_data) && data.sets_data.length > 0) {
-          setExistingSetsData(data.sets_data as SetData[])
+          // Ensure each set has set_type (default to 'normal' if missing)
+          const parsedSets = (data.sets_data as SetData[]).map(set => ({
+            set_number: set.set_number,
+            target_weight: set.target_weight,
+            target_reps: set.target_reps,
+            actual_weight: set.actual_weight,
+            actual_reps: set.actual_reps,
+            completed: set.completed,
+            set_type: (set.set_type || 'normal') as SetType, // Default to 'normal'
+          }))
+          setExistingSetsData(parsedSets)
         } else {
           // Fallback: create sets from summary values
           const fallbackSets: SetData[] = Array.from(
@@ -64,6 +75,7 @@ export default function ExercisePage() {
               actual_weight: data.weight || 0,
               actual_reps: Math.round((data.actual_reps || 0) / (selectedExercise.target_sets || 1)),
               completed: false,
+              set_type: 'normal' as SetType, // Default to 'normal'
             })
           )
           setExistingSetsData(fallbackSets)
