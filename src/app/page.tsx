@@ -6,8 +6,13 @@ import { useAppStore } from '@/lib/store'
 import { supabase } from '@/lib/supabase'
 import { Database } from '@/lib/supabase'
 import { Dumbbell, Lock } from 'lucide-react'
+import { useTypewriter } from '@/hooks/use-typewriter'
 
-type User = Database['public']['Tables']['users']['Row']
+type User = Database['public']['Tables']['users']['Row'] & {
+  welcome_texts?: string[]
+  welcome_image_url?: string | null
+  avatar_image_url?: string | null
+}
 
 export default function LoginPage() {
   const router = useRouter()
@@ -18,47 +23,30 @@ export default function LoginPage() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
 
+  // Typewriter effect for welcome messages
+  const welcomeTexts = selectedUser?.welcome_texts || ['Welcome!', "Let's get strong!", 'Time to crush it!']
+  const typewriterText = useTypewriter(welcomeTexts, 80, 40, 2000)
+
   useEffect(() => {
     fetchUsers()
   }, [])
 
   const fetchUsers = async () => {
-  try {
-    console.log('=== Starting to fetch users ===')
-    console.log('Supabase URL:', process.env.NEXT_PUBLIC_SUPABASE_URL?.substring(0, 20) + '...')
-    
-    const { data, error } = await supabase
-      .from('users')
-      .select('*')
-      .order('created_at', { ascending: true })
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('*')
+        .order('created_at', { ascending: true })
 
-    console.log('Response data:', data)
-    console.log('Response error:', error)
-    console.log('Data type:', typeof data)
-    console.log('Data is array:', Array.isArray(data))
-    console.log('Data length:', data?.length)
-    
-    if (error) {
-      console.error('Supabase error:', error)
-      throw error
+      if (error) throw error
+      setUsers(data || [])
+    } catch (err) {
+      console.error('Error fetching users:', err)
+      setError('Failed to load users')
+    } finally {
+      setLoading(false)
     }
-    
-    console.log('Setting users state...')
-    setUsers(data || [])
-    console.log('Users set:', data?.length, 'users')
-    
-    if (!data || data.length === 0) {
-      console.warn('⚠️ No users found in database!')
-    }
-    
-  } catch (err) {
-    console.error('❌ Error fetching users:', err)
-    setError('Failed to load users')
-  } finally {
-    console.log('=== Fetch complete, setting loading to false ===')
-    setLoading(false)
   }
-}
 
   const handleUserSelect = (user: User) => {
     setSelectedUser(user)
@@ -132,10 +120,23 @@ export default function LoginPage() {
                 }}
               >
                 <div
-                  className="w-16 h-16 md:w-20 md:h-20 rounded-full flex items-center justify-center text-3xl md:text-4xl font-bold"
+                  className="w-16 h-16 md:w-20 md:h-20 rounded-full flex items-center justify-center text-3xl md:text-4xl font-bold overflow-hidden"
                   style={{ backgroundColor: user.avatar_color }}
                 >
-                  {user.name.charAt(0).toUpperCase()}
+                  {/* Show avatar_image_url in user grid (or fallback to initial) */}
+                  {user.avatar_image_url ? (
+                    <img 
+                      src={user.avatar_image_url} 
+                      alt={user.name}
+                      className="w-full h-full object-cover"
+                      onError={(e) => {
+                        e.currentTarget.style.display = 'none'
+                        e.currentTarget.parentElement!.innerHTML = user.name.charAt(0).toUpperCase()
+                      }}
+                    />
+                  ) : (
+                    user.name.charAt(0).toUpperCase()
+                  )}
                 </div>
                 <span className="font-bold text-foreground text-sm md:text-base group-hover:underline">
                   {user.name}
@@ -148,13 +149,51 @@ export default function LoginPage() {
           </div>
         ) : (
           <div className="flex flex-col items-center gap-6">
-            {/* Selected User Card */}
+            {/* Welcome Image + Typewriter (PRIVATE - only shown here) */}
+            <div className="flex items-center gap-4 mb-2">
+              {selectedUser.welcome_image_url && (
+                <div 
+                  className="w-16 h-16 rounded-xl overflow-hidden flex-shrink-0"
+                  style={{ backgroundColor: selectedUser.avatar_color }}
+                >
+                  <img 
+                    src={selectedUser.welcome_image_url} 
+                    alt="Welcome"
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none'
+                    }}
+                  />
+                </div>
+              )}
+              <div className="text-left">
+                <p className="text-sm text-muted-foreground font-mono">Hello, {selectedUser.name}</p>
+                <h2 className="text-2xl font-bold text-foreground font-mono min-h-[32px]">
+                  {typewriterText}
+                  <span className="animate-pulse">|</span>
+                </h2>
+              </div>
+            </div>
+
+            {/* Selected User Card - Show avatar_image_url here too */}
             <div
               className="neo-card w-64 h-64 rounded-2xl flex flex-col items-center justify-center gap-4 bg-card p-6"
               style={{ backgroundColor: selectedUser.avatar_color }}
             >
-              <div className="w-24 h-24 rounded-full bg-white/20 flex items-center justify-center text-5xl font-bold text-white">
-                {selectedUser.name.charAt(0).toUpperCase()}
+              <div className="w-24 h-24 rounded-full bg-white/20 flex items-center justify-center text-5xl font-bold text-white overflow-hidden">
+                {selectedUser.avatar_image_url ? (
+                  <img 
+                    src={selectedUser.avatar_image_url} 
+                    alt={selectedUser.name}
+                    className="w-full h-full object-cover"
+                    onError={(e) => {
+                      e.currentTarget.style.display = 'none'
+                      e.currentTarget.parentElement!.innerHTML = selectedUser.name.charAt(0).toUpperCase()
+                    }}
+                  />
+                ) : (
+                  selectedUser.name.charAt(0).toUpperCase()
+                )}
               </div>
               <span className="font-bold text-white text-2xl">{selectedUser.name}</span>
             </div>
