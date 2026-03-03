@@ -6,7 +6,8 @@ import { supabase } from '@/lib/supabase'
 import { Database } from '@/lib/supabase'
 import UserLayout from '@/components/user-layout'
 import { useAppStore } from '@/lib/store'
-import { Dumbbell, ArrowRight, Calendar, Check } from 'lucide-react'
+import { Dumbbell, ArrowRight, Calendar, Check, MessageSquarePlus } from 'lucide-react'
+import { RequestExerciseModal } from '@/components/request-exercise-modal'
 
 type Exercise = Database['public']['Tables']['exercises']['Row']
 
@@ -35,6 +36,7 @@ export default function HomePage() {
   const [showWeekView, setShowWeekView] = useState(false)
   const [weekSequence, setWeekSequence] = useState<any[]>([])
   const [totalDays, setTotalDays] = useState(0)
+  const [requestModalOpen, setRequestModalOpen] = useState(false)
 
   useEffect(() => {
     if (!currentUser) {
@@ -226,20 +228,32 @@ export default function HomePage() {
   return (
     <UserLayout>
       <div className="max-w-7xl mx-auto p-6">
-        {/* Header */}
-        <div className="mb-8">
-          <div className="flex items-center justify-between mb-2">
-            <div>
-              <h1 className="text-3xl md:text-4xl font-bold text-foreground mb-2">
-                {showWeekView ? 'Weekly Workout Plan' : `Day ${currentDayNumber} Workout`}
-              </h1>
-              <p className="font-mono text-muted-foreground">
-                {showWeekView 
-                  ? `${totalDays} day sequence • ${weekSequence.length} total exercises`
-                  : new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
-                }
-              </p>
-            </div>
+      {/* Header */}
+      <div className="mb-8">
+        <div className="flex items-center justify-between mb-2">
+          <div>
+            <h1 className="text-3xl md:text-4xl font-bold text-foreground mb-2">
+              {showWeekView ? 'Weekly Workout Plan' : `Day ${currentDayNumber} Workout`}
+            </h1>
+            <p className="font-mono text-muted-foreground">
+              {showWeekView 
+                ? `${totalDays} day sequence • ${weekSequence.length} total exercises`
+                : new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })
+              }
+            </p>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            {/* Request Exercise Button */}
+            <button
+              onClick={() => setRequestModalOpen(true)}
+              className="px-4 py-2 rounded-lg bg-primary/10 text-primary font-mono text-sm hover:bg-primary/20 transition-colors flex items-center gap-2 border-2 border-primary/30"
+            >
+              <MessageSquarePlus className="w-4 h-4" />
+              <span className="hidden sm:inline">Request Exercise</span>
+            </button>
+            
+            {/* View Toggle Button */}
             <button
               onClick={handleToggleView}
               className="px-4 py-2 rounded-lg bg-secondary text-secondary-foreground font-mono text-sm hover:bg-secondary/80 transition-colors flex items-center gap-2"
@@ -258,6 +272,10 @@ export default function HomePage() {
             </button>
           </div>
         </div>
+      </div>
+
+      {/* Request Modal */}
+      <RequestExerciseModal open={requestModalOpen} onOpenChange={setRequestModalOpen} />
 
         {/* Week View */}
         {showWeekView && (
