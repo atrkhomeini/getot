@@ -12,7 +12,7 @@ import {
   ExerciseLogCardWithPerSet, 
   ExerciseLogDataWithPerSet 
 } from '@/components/exercise-log-card-with-perset'
-import { SetData, SetType } from '@/components/per-sets-tracker'
+import { SetData, SetType } from '@/components/per-set-tracker'
 
 type Exercise = Database['public']['Tables']['exercises']['Row']
 type WorkoutLog = Database['public']['Tables']['workout_logs']['Row']

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { readdir, stat } from 'fs/promises'
 import { join } from 'path'
 
-const CATEGORIES = ['arm', 'back', 'chest', 'leg', 'shoulder']
+const CATEGORIES = ['arm', 'back', 'chest', 'core', 'leg', 'shoulder']
 
 export async function GET(request: NextRequest) {
   try {

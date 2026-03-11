@@ -25,7 +25,7 @@ type Exercise = Database['public']['Tables']['exercises']['Row'] & {
 
 type User = Database['public']['Tables']['users']['Row']
 
-const categories = ['back', 'chest', 'shoulder', 'leg', 'arm'] as const
+const categories = ['back', 'chest', 'shoulder', 'leg', 'arm', 'core'] as const
 
 // Auto-detect category from exercise name
 const EXERCISE_CATEGORY_KEYWORDS: Record<string, string> = {
@@ -75,6 +75,18 @@ const EXERCISE_CATEGORY_KEYWORDS: Record<string, string> = {
   'wrist': 'arm',
   'dumbell curl': 'arm',
   'barbell curl': 'arm',
+
+  // Core keywords (NEW)
+  'crunch': 'core',
+  'sit up': 'core',
+  'plank': 'core',
+  'leg raise': 'core',
+  'ab': 'core',
+  'abs': 'core',
+  'core': 'core',
+  'russian twist': 'core',
+  'mountain climber': 'core',
+  'roll out': 'core',
 }
 
 function detectCategoryFromName(name: string): string {
@@ -305,6 +317,7 @@ export default function AdminExercisesPage() {
     shoulder: 'var(--accent)',
     leg: 'var(--muted)',
     arm: '#FF6B6B',
+    core: '#06B6D4',
   }
 
   // Filter exercises by user
@@ -643,7 +656,7 @@ export default function AdminExercisesPage() {
                 {/* Local Assets - Grouped by Category */}
                 {showLocalAssets && (
                   <div>
-                    {['arm', 'back', 'chest', 'leg', 'shoulder'].map(cat => {
+                    {['arm', 'back', 'chest', 'core' , 'leg', 'shoulder'].map(cat => {
                       const categoryAssets = localAssets.filter(a => a.category === cat)
                       
                       if (categoryAssets.length === 0) return null

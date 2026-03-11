@@ -47,6 +47,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   shoulder: 'hsl(var(--accent))',
   leg: 'hsl(var(--muted))',
   arm: '#FF6B6B',
+  core: '#06B6D4',
 }
 
 const CATEGORY_ICONS: Record<string, string> = {
@@ -55,9 +56,10 @@ const CATEGORY_ICONS: Record<string, string> = {
   chest: '/icons/chest.png',
   shoulder: '/icons/shoulder.png',
   arm: '/icons/arm.png',
+  core: '/icons/core.png',
 }
 
-const ALL_CATEGORIES = ['back', 'chest', 'shoulder', 'leg', 'arm'] as const
+const ALL_CATEGORIES = ['back', 'chest', 'shoulder', 'leg', 'arm', 'core'] as const
 
 // Sortable Exercise Item Component
 function SortableExerciseItem({ 
