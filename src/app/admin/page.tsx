@@ -113,7 +113,20 @@ export default function AdminDashboard() {
   const handleResolveRequest = async () => {
     if (!selectedRequest) return
 
-    setResolving(true)
+    // === OPTIMISTIC UI START ===
+    
+    // 1. Store previous state for rollback
+    const previousRequests = [...pendingRequests]
+    
+    // 2. Remove request from list immediately
+    setPendingRequests(prev => prev.filter(r => r.id !== selectedRequest.id))
+    
+    // 3. Close modal and show success
+    setDetailDialogOpen(false)
+    toast.success('Request resolved!')
+    // === OPTIMISTIC UI END ===
+
+    // === BACKGROUND SYNC ===
     try {
       const { error } = await supabase
         .from('exercise_requests')
@@ -125,15 +138,17 @@ export default function AdminDashboard() {
         .eq('id', selectedRequest.id)
 
       if (error) throw error
-
-      toast.success('Request marked as resolved!')
-      setDetailDialogOpen(false)
-      fetchData()
+      
+      // No need to fetch data again, state is already updated
+      
     } catch (err) {
       console.error('Error resolving request:', err)
+      
+      // ROLLBACK: Restore previous state
+      setPendingRequests(previousRequests)
+      
+      // Show error
       toast.error('Failed to resolve request')
-    } finally {
-      setResolving(false)
     }
   }
 

@@ -79,25 +79,38 @@ export function ExerciseLogCardWithPerSet({
   }
 
   const handleSave = async () => {
-    setIsSaving(true)
-    try {
-      const summary = calculateSummary()
-      const logData: ExerciseLogDataWithPerSet = {
-        exercise_id: exercise.id,
-        actual_sets: summary.completedSets,
-        actual_reps: summary.totalReps,
-        actual_weight: summary.avgWeight,
-        sets_data: setsData,
-      }
+    // === OPTIMISTIC UI START ===
+    
+    // 1. Calculate summary immediately
+    const summary = calculateSummary()
+    
+    // 2. Prepare log data
+    const logData: ExerciseLogDataWithPerSet = {
+      exercise_id: exercise.id,
+      actual_sets: summary.completedSets,
+      actual_reps: summary.totalReps,
+      actual_weight: summary.avgWeight,
+      sets_data: setsData,
+    }
 
+    // 3. Update UI to "Saved" state immediately
+    setIsSaving(true) // Keep button disabled
+    
+    // 4. Trigger success feedback immediately
+    toast.success('Workout logged!')
+    
+    // 5. Call parent onSave (which does the background sync)
+    try {
       if (onSave) {
         await onSave(logData)
       }
     } catch (error) {
       console.error('Error saving log:', error)
+      toast.error('Failed to save log')
     } finally {
       setIsSaving(false)
     }
+    // === OPTIMISTIC UI END ===
   }
 
   const handleReset = () => {
