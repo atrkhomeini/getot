@@ -243,17 +243,39 @@ export default function AdminSequencePage() {
   const handleAddExercise = async (exerciseId: string, dayNumber: number) => {
     if (!selectedUser) return
 
+    // === OPTIMISTIC UI START ===
+    
+    // 1. Get current max sort_order for the day
+    const daySequence = getSequenceForDay(dayNumber)
+    const sortOrder = daySequence.length > 0 
+      ? Math.max(...daySequence.map(s => s.sort_order)) + 1 
+      : 0
+
+    // 2. Find exercise details
+    const exercise = exercises.find(ex => ex.id === exerciseId)
+    if (!exercise) return
+
+    // 3. Create optimistic sequence item
+    const tempId = `temp-${Date.now()}`
+    const optimisticItem = {
+      id: tempId,
+      user_id: selectedUser.id,
+      exercise_id: exerciseId,
+      day_number: dayNumber,
+      sort_order: sortOrder,
+      exercises: exercise,
+    }
+
+    // 4. Add to state immediately
+    setSequence(prev => [...prev, optimisticItem])
+    
+    // 5. Close dialog and show success
+    setDialogOpen(false)
+    toast.success('Exercise added!')
+    // === OPTIMISTIC UI END ===
+
+    // === BACKGROUND SYNC ===
     try {
-      const { data: existing } = await supabase
-        .from('workout_sequences')
-        .select('sort_order')
-        .eq('user_id', selectedUser.id)
-        .eq('day_number', dayNumber)
-        .order('sort_order', { ascending: false })
-        .limit(1)
-
-      const sortOrder = existing?.[0]?.sort_order + 1 || 0
-
       const { error } = await supabase
         .from('workout_sequences')
         .insert({
@@ -264,17 +286,33 @@ export default function AdminSequencePage() {
         })
 
       if (error) throw error
-      toast.success('Exercise added to sequence!')
+
+      // Refresh to get real ID from database
       fetchSequence(selectedUser.id)
+      
     } catch (err) {
       console.error('Error adding exercise:', err)
+      
+      // ROLLBACK
+      setSequence(prev => prev.filter(s => s.id !== tempId))
       toast.error('Failed to add exercise')
     }
   }
 
   const handleRemoveExercise = async (sequenceId: string) => {
-    if (!confirm('Remove this exercise from the sequence?')) return
+    // === OPTIMISTIC UI START ===
+    
+    // 1. Store previous state
+    const previousSequence = [...sequence]
+    
+    // 2. Remove from state immediately
+    setSequence(prev => prev.filter(s => s.id !== sequenceId))
+    
+    // 3. Show success
+    toast.success('Exercise removed!')
+    // === OPTIMISTIC UI END ===
 
+    // === BACKGROUND SYNC ===
     try {
       const { error } = await supabase
         .from('workout_sequences')
@@ -282,10 +320,12 @@ export default function AdminSequencePage() {
         .eq('id', sequenceId)
 
       if (error) throw error
-      toast.success('Exercise removed from sequence!')
-      fetchSequence(selectedUser!.id)
+      
     } catch (err) {
       console.error('Error removing exercise:', err)
+      
+      // ROLLBACK
+      setSequence(previousSequence)
       toast.error('Failed to remove exercise')
     }
   }

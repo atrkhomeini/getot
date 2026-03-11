@@ -94,6 +94,14 @@ export default function ExercisePage() {
   const handleSaveLog = async (logData: ExerciseLogDataWithPerSet) => {
     if (!currentUser || !selectedExercise) return
 
+    // === OPTIMISTIC UI START ===
+    
+    // 1. Navigate back to home immediately (User sees success instantly)
+    toast.success('Workout log saved!')
+    router.push('/home')
+    // === OPTIMISTIC UI END ===
+
+    // === BACKGROUND SYNC ===
     try {
       // Step 1: Save workout log with sets_data
       if (workoutLog) {
@@ -141,20 +149,10 @@ export default function ExercisePage() {
           }),
         })
       }
-
-      toast.success('Workout log saved!')
-      
-      // Refresh the log data
-      await fetchWorkoutLog()
-      
-      // Navigate back to home after short delay
-      setTimeout(() => {
-        router.push('/home')
-      }, 1000)
     } catch (err) {
-      console.error('Error saving workout log:', err)
-      toast.error('Failed to save workout log')
-      throw err // Re-throw to let component handle loading state
+      console.error('Error saving workout log in background:', err)
+      // Note: User already left page, but we log the error
+      // Could add a "retry" mechanism here if needed
     }
   }
 
