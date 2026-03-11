@@ -55,6 +55,7 @@ const categoryColors: Record<string, string> = {
   shoulder: 'var(--accent)',
   leg: 'var(--muted)',
   arm: '#FF6B6B',
+  core: '#06B6D4',
 }
 
 const categoryIcons: Record<string, string> = {
@@ -63,6 +64,7 @@ const categoryIcons: Record<string, string> = {
   shoulder: '/icons/shoulder.png',
   leg: '/icons/leg.png',
   arm: '/icons/arm.png',
+  core: '/icons/core.png',
 }
 
 const SET_TYPE_COLORS = {

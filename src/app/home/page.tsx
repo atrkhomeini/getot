@@ -17,14 +17,16 @@ const categoryColors: Record<string, string> = {
   chest: 'var(--primary)',
   shoulder: 'var(--muted)',
   arm: '#FF6B6B',
+  core: '#06B6D4',
 }
 
 const categoryIcons: Record<string, string> = {
-  back: '🏋️',
-  leg: '🦵',
-  chest: '💪',
-  shoulder: '🎯',
-  arm: '💪',
+  back: '/icons/back.png',
+  leg: '/icons/leg.png',
+  chest: '/icons/chest.png',
+  shoulder: '/icons/shoulder.png',
+  arm: '/icons/arm.png',
+  core: '/icons/core.png',
 }
 
 export default function HomePage() {
@@ -209,7 +211,7 @@ export default function HomePage() {
     return acc
   }, {} as Record<string, (Exercise & { completed?: boolean })[]>)
 
-  const categoryOrder = ['back', 'chest', 'shoulder', 'leg', 'arm']
+  const categoryOrder = ['back', 'chest', 'shoulder', 'leg', 'arm', 'core']
 
   const getSequenceForDay = (dayNumber: number) => {
     return weekSequence.filter(s => s.day_number === dayNumber)
