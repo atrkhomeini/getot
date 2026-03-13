@@ -96,14 +96,13 @@ export default function ExercisePage() {
 
     // === OPTIMISTIC UI START ===
     
-    // 1. Navigate back to home immediately (User sees success instantly)
-    toast.success('Workout log saved!')
+    // 1. Navigate immediately - User feels instant response
     router.push('/home')
     // === OPTIMISTIC UI END ===
 
-    // === BACKGROUND SYNC ===
+    // === BACKGROUND SYNC (runs while user is on home page) ===
     try {
-      // Step 1: Save workout log with sets_data
+      // Step 1: Save workout log
       if (workoutLog) {
         const { error } = await supabase
           .from('workout_logs')
@@ -130,7 +129,7 @@ export default function ExercisePage() {
         if (error) throw error
       }
 
-      // Step 2: Mark exercise as completed in workout session
+      // Step 2: Mark exercise as completed
       const { data: progress } = await supabase
         .from('user_progress')
         .select('current_day_number')
@@ -149,10 +148,11 @@ export default function ExercisePage() {
           }),
         })
       }
+
     } catch (err) {
-      console.error('Error saving workout log in background:', err)
-      // Note: User already left page, but we log the error
-      // Could add a "retry" mechanism here if needed
+      console.error('Background sync error:', err)
+      // Could show a small toast: "Sync failed, will retry"
+      // But user already left the page, so minimal impact
     }
   }
 
