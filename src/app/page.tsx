@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useAppStore } from '@/lib/store'
 import { supabase } from '@/lib/supabase'
 import { Database } from '@/lib/supabase'
-import { Dumbbell, Lock } from 'lucide-react'
+import { Dumbbell, Lock, ArrowLeft, Eye, EyeOff } from 'lucide-react'
 import { useTypewriter } from '@/hooks/use-typewriter'
 
 type User = Database['public']['Tables']['users']['Row'] & {
@@ -22,6 +22,7 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(true)
+  const [showPassword, setShowPassword] = useState(false)
 
   // Typewriter effect for welcome messages
   const welcomeTexts = selectedUser?.welcome_texts || ['Welcome!', "Let's get strong!", 'Time to crush it!']
@@ -206,14 +207,26 @@ export default function LoginPage() {
               <div className="relative">
                 <Lock className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-muted-foreground" />
                 <input
-                  type="password"
+                  type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   onKeyPress={handleKeyPress}
                   placeholder="Enter password"
-                  className="neo-input w-full pl-12 pr-4 py-4 rounded-xl bg-background text-foreground placeholder:text-muted-foreground font-mono focus:outline-none focus:ring-2 focus:ring-primary"
+                  className="neo-input w-full pl-12 pr-12 py-4 rounded-xl bg-background text-foreground placeholder:text-muted-foreground font-mono focus:outline-none focus:ring-2 focus:ring-primary"
                   autoFocus
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-4 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  tabIndex={-1}
+                >
+                  {showPassword ? (
+                    <EyeOff className="w-5 h-5" />
+                  ) : (
+                    <Eye className="w-5 h-5" />
+                  )}
+                </button>
               </div>
               {error && (
                 <p className="text-destructive font-mono text-sm mt-2">{error}</p>

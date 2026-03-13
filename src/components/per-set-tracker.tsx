@@ -320,7 +320,7 @@ export function PerSetTracker({
                 </div>
 
                 {/* Actual Inputs */}
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {/* Weight Input */}
                   <div>
                     <div className="flex items-center justify-between mb-2">
@@ -330,7 +330,7 @@ export function PerSetTracker({
                           "text-xs font-mono font-bold",
                           weightMet ? "text-green-500" : "text-red-500"
                         )}>
-                          {weightMet ? '✓ Met' : `${set.actual_weight - set.target_weight > 0 ? '+' : ''}${(set.actual_weight - set.target_weight).toFixed(1)}`}
+                          {weightMet ? '✓ Met' : `${(set.actual_weight - set.target_weight).toFixed(1)}`}
                         </span>
                       )}
                     </div>
@@ -354,7 +354,7 @@ export function PerSetTracker({
                           "text-xs font-mono font-bold",
                           repsMet ? "text-green-500" : "text-red-500"
                         )}>
-                          {repsMet ? '✓ Met' : `${set.actual_reps - set.target_reps > 0 ? '+' : ''}${set.actual_reps - set.target_reps}`}
+                          {repsMet ? '✓ Met' : `${set.actual_reps - set.target_reps}`}
                         </span>
                       )}
                     </div>
