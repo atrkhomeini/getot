@@ -6,6 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { PerSetTracker, SetData, SetType } from '@/components/per-set-tracker'
 import { cn } from '@/lib/utils'
+import { toast } from 'sonner'
 
 interface ExerciseLogCardWithPerSetProps {
   exercise: {
@@ -81,26 +82,26 @@ export function ExerciseLogCardWithPerSet({
   const handleSave = () => {
     // === OPTIMISTIC UI START ===
     
-    // 1. Show success immediately
-    toast.success('Workout logged!')
-    
-    // 2. Close card / navigate immediately
-    if (onSave) {
-      // Fire-and-forget: Don't await!
-      onSave(logData).catch(err => {
-        console.error('Background save failed:', err)
-        toast.error('Failed to sync. Will retry.')
-      })
-    }
-    
-    // 3. Immediately set visual completed state
+    // 1. Calculate summary and prepare data FIRST
     const summary = calculateSummary()
+    
     const logData: ExerciseLogDataWithPerSet = {
       exercise_id: exercise.id,
       actual_sets: summary.completedSets,
       actual_reps: summary.totalReps,
       actual_weight: summary.avgWeight,
       sets_data: setsData,
+    }
+
+    // 2. Show success immediately
+    toast.success('Workout logged!')
+    
+    // 3. Fire-and-forget save (don't await)
+    if (onSave) {
+      onSave(logData).catch(err => {
+        console.error('Background save failed:', err)
+        toast.error('Failed to sync. Will retry.')
+      })
     }
     // === OPTIMISTIC UI END ===
   }

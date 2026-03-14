@@ -11,7 +11,7 @@ export interface User {
 export interface Exercise {
   id: string
   name: string
-  category: 'back' | 'legs' | 'chest' | 'shoulder'
+  category: 'back' | 'legs' | 'chest' | 'shoulder' | 'arm' | 'core'
   target_sets: number
   target_reps: number
   gif_url: string
@@ -48,6 +48,29 @@ interface AppState {
   // Check-in/out
   currentCheckIn: CheckIn | null
   setCurrentCheckIn: (checkIn: CheckIn | null) => void
+
+  // Notifications (NEW)
+  notificationsEnabled: boolean
+  setNotificationsEnabled: (enabled: boolean) => void
+}
+
+
+interface AppState {
+  // Auth
+  currentUser: User | null
+  setCurrentUser: (user: User | null) => void
+
+  // Theme
+  isDark: boolean
+  toggleTheme: () => void
+
+  // Exercise
+  selectedExercise: Exercise | null
+  setSelectedExercise: (exercise: Exercise | null) => void
+
+  // Check-in/out
+  currentCheckIn: CheckIn | null
+  setCurrentCheckIn: (checkIn: CheckIn | null) => void
 }
 
 export const useAppStore = create<AppState>()(
@@ -64,6 +87,10 @@ export const useAppStore = create<AppState>()(
 
       currentCheckIn: null,
       setCurrentCheckIn: (checkIn) => set({ currentCheckIn: checkIn }),
+
+      // Notifications (NEW)
+      notificationsEnabled: false,
+      setNotificationsEnabled: (enabled) => set({ notificationsEnabled: enabled }),
     }),
     {
       name: 'gym-app-storage',
@@ -71,6 +98,7 @@ export const useAppStore = create<AppState>()(
         currentUser: state.currentUser,
         isDark: state.isDark,
         currentCheckIn: state.currentCheckIn,
+        notificationsEnabled: state.notificationsEnabled,
       }),
     }
   )

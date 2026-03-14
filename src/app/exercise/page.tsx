@@ -12,14 +12,15 @@ import {
   ExerciseLogCardWithPerSet, 
   ExerciseLogDataWithPerSet 
 } from '@/components/exercise-log-card-with-perset'
-import { SetData, SetType } from '@/components/per-set-tracker'
+import { SetData, SetType } from '@/components/per-sets-tracker'
+import { requestNotificationPermission, scheduleCheckOutReminder } from '@/lib/notifications'
 
 type Exercise = Database['public']['Tables']['exercises']['Row']
 type WorkoutLog = Database['public']['Tables']['workout_logs']['Row']
 
 export default function ExercisePage() {
   const router = useRouter()
-  const { currentUser, selectedExercise } = useAppStore()
+  const { currentUser, selectedExercise, currentCheckIn, setCurrentCheckIn, notificationsEnabled, setNotificationsEnabled } = useAppStore()
   const [workoutLog, setWorkoutLog] = useState<WorkoutLog | null>(null)
   const [existingSetsData, setExistingSetsData] = useState<SetData[]>([])
   const [loading, setLoading] = useState(true)
@@ -51,9 +52,7 @@ export default function ExercisePage() {
       if (data) {
         setWorkoutLog(data)
         
-        // Parse existing sets_data or create from summary
         if (data.sets_data && Array.isArray(data.sets_data) && data.sets_data.length > 0) {
-          // Ensure each set has set_type (default to 'normal' if missing)
           const parsedSets = (data.sets_data as SetData[]).map(set => ({
             set_number: set.set_number,
             target_weight: set.target_weight,
@@ -61,11 +60,10 @@ export default function ExercisePage() {
             actual_weight: set.actual_weight,
             actual_reps: set.actual_reps,
             completed: set.completed,
-            set_type: (set.set_type || 'normal') as SetType, // Default to 'normal'
+            set_type: (set.set_type || 'normal') as SetType,
           }))
           setExistingSetsData(parsedSets)
         } else {
-          // Fallback: create sets from summary values
           const fallbackSets: SetData[] = Array.from(
             { length: selectedExercise.target_sets }, 
             (_, i) => ({
@@ -75,13 +73,12 @@ export default function ExercisePage() {
               actual_weight: data.weight || 0,
               actual_reps: Math.round((data.actual_reps || 0) / (selectedExercise.target_sets || 1)),
               completed: false,
-              set_type: 'normal' as SetType, // Default to 'normal'
+              set_type: 'normal' as SetType,
             })
           )
           setExistingSetsData(fallbackSets)
         }
       } else {
-        // No existing log - initialize empty sets
         setExistingSetsData([])
       }
     } catch (err) {
@@ -94,15 +91,49 @@ export default function ExercisePage() {
   const handleSaveLog = async (logData: ExerciseLogDataWithPerSet) => {
     if (!currentUser || !selectedExercise) return
 
+    // === AUTO CHECK-IN ===
+    // If user is not checked in, check them in automatically
+    if (!currentCheckIn) {
+      try {
+        const { data, error } = await supabase
+          .from('check_ins')
+          .insert({
+            user_id: currentUser.id,
+            check_in_time: new Date().toISOString(),
+          })
+          .select()
+          .single()
+
+        if (!error && data) {
+          setCurrentCheckIn(data)
+          
+          // Request notification permission and schedule reminder
+          const hasPermission = await requestNotificationPermission()
+          setNotificationsEnabled(hasPermission)
+          
+          if (hasPermission) {
+            scheduleCheckOutReminder(new Date(data.check_in_time))
+          }
+          
+          toast.info('Auto checked in!')
+        }
+      } catch (err) {
+        console.error('Auto check-in failed:', err)
+        // Continue saving even if check-in fails
+      }
+    }
+
     // === OPTIMISTIC UI START ===
-    
-    // 1. Navigate immediately - User feels instant response
+    toast.success('Workout log saved!')
     router.push('/home')
     // === OPTIMISTIC UI END ===
 
-    // === BACKGROUND SYNC (runs while user is on home page) ===
+    // === BACKGROUND SYNC ===
+    saveLogToDatabase(logData)
+  }
+
+  const saveLogToDatabase = async (logData: ExerciseLogDataWithPerSet) => {
     try {
-      // Step 1: Save workout log
       if (workoutLog) {
         const { error } = await supabase
           .from('workout_logs')
@@ -118,8 +149,8 @@ export default function ExercisePage() {
         const { error } = await supabase
           .from('workout_logs')
           .insert({
-            user_id: currentUser.id,
-            exercise_id: selectedExercise.id,
+            user_id: currentUser!.id,
+            exercise_id: selectedExercise!.id,
             actual_sets: logData.actual_sets,
             actual_reps: logData.actual_reps,
             weight: logData.actual_weight,
@@ -129,11 +160,11 @@ export default function ExercisePage() {
         if (error) throw error
       }
 
-      // Step 2: Mark exercise as completed
+      // Mark exercise as completed in workout session
       const { data: progress } = await supabase
         .from('user_progress')
         .select('current_day_number')
-        .eq('user_id', currentUser.id)
+        .eq('user_id', currentUser!.id)
         .single()
 
       if (progress) {
@@ -141,18 +172,15 @@ export default function ExercisePage() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            user_id: currentUser.id,
+            user_id: currentUser!.id,
             day_number: progress.current_day_number,
-            exercise_id: selectedExercise.id,
+            exercise_id: selectedExercise!.id,
             completed: true,
           }),
         })
       }
-
     } catch (err) {
       console.error('Background sync error:', err)
-      // Could show a small toast: "Sync failed, will retry"
-      // But user already left the page, so minimal impact
     }
   }
 
