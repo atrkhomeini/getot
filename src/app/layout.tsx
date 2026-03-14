@@ -1,8 +1,9 @@
-import type { Metadata, Viewport } from "next";
-import "./globals.css";
-import { Toaster } from "@/components/ui/toaster";
-import { ThemeProvider } from "@/components/theme-provider";
-import { Inter, Press_Start_2P } from "next/font/google";
+import type { Metadata, Viewport } from "next"
+import "./globals.css"
+import { Toaster } from "@/components/ui/toaster"
+import { ThemeProvider } from "@/components/theme-provider"
+import { Inter, Press_Start_2P } from "next/font/google"
+import { Analytics } from "@vercel/analytics/react"
 
 const inter = Inter({
   subsets: ["latin"],
