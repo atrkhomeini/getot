@@ -8,6 +8,7 @@ import UserLayout from '@/components/user-layout'
 import { useAppStore } from '@/lib/store'
 import { Dumbbell, ArrowRight, Calendar, Check, MessageSquarePlus } from 'lucide-react'
 import { RequestExerciseModal } from '@/components/request-exercise-modal'
+import { checkPendingReminder } from '@/lib/notifications'
 
 type Exercise = Database['public']['Tables']['exercises']['Row']
 
@@ -46,6 +47,7 @@ export default function HomePage() {
       return
     }
     fetchExercises()
+    checkPendingReminder()
   }, [currentUser, router])
 
   useEffect(() => {
