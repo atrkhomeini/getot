@@ -4,6 +4,7 @@ import { Toaster } from "@/components/ui/toaster"
 import { ThemeProvider } from "@/components/theme-provider"
 import { Inter, Press_Start_2P } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
+import { SentryUserContext } from "@/components/sentry-user-context"
 
 const inter = Inter({
   subsets: ["latin"],
@@ -91,6 +92,9 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
+          {/* Sentry User Context Tracker */}
+          <SentryUserContext />
+          
           {children}
           <Toaster />
         </ThemeProvider>
