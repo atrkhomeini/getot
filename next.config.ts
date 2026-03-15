@@ -16,25 +16,31 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: true,
   },
   reactStrictMode: false,
-  // Add empty turbopack config to suppress the warning
   turbopack: {},
+  
+  // Enable source maps for better error traces
+  productionBrowserSourceMaps: true,
 };
 
-// Apply Serwist wrapper first
 const wrappedConfig = withSerwist(nextConfig);
 
-// Apply Sentry wrapper second (only if DSN is provided)
 const sentryConfig = withSentryConfig(wrappedConfig, {
   org: process.env.SENTRY_ORG,
   project: process.env.SENTRY_PROJECT,
-  silent: !process.env.CI, // Only print logs in CI
+  silent: !process.env.CI,
   widenClientFileUpload: true,
-  reactComponentAnnotation: {
-    enabled: true,
+  
+  // NEW: Use webpack-specific options instead of deprecated top-level ones
+  webpack: {
+    reactComponentAnnotation: {
+      enabled: true,
+    },
+    treeshake: {
+      removeDebugLogging: true,
+    },
   },
-  hideSourceMaps: true,
-  disableLogger: true,
+  
+  hideSourceMaps: false, // Changed to false since we want readable traces
 });
 
-// Export Sentry config if DSN exists, otherwise export normal wrapped config
 export default process.env.NEXT_PUBLIC_SENTRY_DSN ? sentryConfig : wrappedConfig;
