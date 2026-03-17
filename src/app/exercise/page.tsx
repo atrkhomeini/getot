@@ -91,45 +91,92 @@ export default function ExercisePage() {
   const handleSaveLog = async (logData: ExerciseLogDataWithPerSet) => {
     if (!currentUser || !selectedExercise) return
 
-    // === AUTO CHECK-IN ===
-    // If user is not checked in, check them in automatically
-    if (!currentCheckIn) {
-      try {
-        const { data, error } = await supabase
-          .from('check_ins')
+    // === SHOW LOADING STATE ===
+    toast.loading('Saving workout...', { id: 'save-log' })
+
+    try {
+      // === AUTO CHECK-IN ===
+      if (!currentCheckIn) {
+        try {
+          const { data, error } = await supabase
+            .from('check_ins')
+            .insert({
+              user_id: currentUser.id,
+              check_in_time: new Date().toISOString(),
+            })
+            .select()
+            .single()
+
+          if (!error && data) {
+            setCurrentCheckIn(data)
+            const hasPermission = await requestNotificationPermission()
+            setNotificationsEnabled(hasPermission)
+            if (hasPermission) {
+              scheduleCheckOutReminder(new Date(data.check_in_time))
+            }
+            toast.info('Auto checked in!', { id: 'checkin' })
+          }
+        } catch (err) {
+          console.error('Auto check-in failed:', err)
+        }
+      }
+
+      // === SAVE TO DATABASE (WAIT FOR IT) ===
+      if (workoutLog) {
+        const { error } = await supabase
+          .from('workout_logs')
+          .update({
+            actual_sets: logData.actual_sets,
+            actual_reps: logData.actual_reps,
+            weight: logData.actual_weight,
+            sets_data: logData.sets_data,
+          })
+          .eq('id', workoutLog.id)
+        if (error) throw error
+      } else {
+        const { error } = await supabase
+          .from('workout_logs')
           .insert({
             user_id: currentUser.id,
-            check_in_time: new Date().toISOString(),
+            exercise_id: selectedExercise.id,
+            actual_sets: logData.actual_sets,
+            actual_reps: logData.actual_reps,
+            weight: logData.actual_weight,
+            date: new Date().toISOString().split('T')[0],
+            sets_data: logData.sets_data,
           })
-          .select()
-          .single()
-
-        if (!error && data) {
-          setCurrentCheckIn(data)
-          
-          // Request notification permission and schedule reminder
-          const hasPermission = await requestNotificationPermission()
-          setNotificationsEnabled(hasPermission)
-          
-          if (hasPermission) {
-            scheduleCheckOutReminder(new Date(data.check_in_time))
-          }
-          
-          toast.info('Auto checked in!')
-        }
-      } catch (err) {
-        console.error('Auto check-in failed:', err)
-        // Continue saving even if check-in fails
+        if (error) throw error
       }
+
+      // === MARK EXERCISE COMPLETE ===
+      const { data: progress } = await supabase
+        .from('user_progress')
+        .select('current_day_number')
+        .eq('user_id', currentUser.id)
+        .single()
+
+      if (progress) {
+        await fetch('/api/workout-sessions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            user_id: currentUser.id,
+            day_number: progress.current_day_number,
+            exercise_id: selectedExercise.id,
+            completed: true,
+          }),
+        })
+      }
+
+      // === SUCCESS: NOW NAVIGATE ===
+      toast.success('Workout saved!', { id: 'save-log' })
+      router.push('/home')
+
+    } catch (err: any) {
+      console.error('Save failed:', err)
+      toast.error(`Failed to save: ${err.message}`, { id: 'save-log' })
+      // DON'T navigate - stay on page so user can retry
     }
-
-    // === OPTIMISTIC UI START ===
-    toast.success('Workout log saved!')
-    router.push('/home')
-    // === OPTIMISTIC UI END ===
-
-    // === BACKGROUND SYNC ===
-    saveLogToDatabase(logData)
   }
 
   const saveLogToDatabase = async (logData: ExerciseLogDataWithPerSet) => {
