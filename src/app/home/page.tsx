@@ -9,6 +9,7 @@ import { useAppStore } from '@/lib/store'
 import { Dumbbell, ArrowRight, Calendar, Check, MessageSquarePlus } from 'lucide-react'
 import { RequestExerciseModal } from '@/components/request-exercise-modal'
 import { checkPendingReminder } from '@/lib/notifications'
+import { Calender, History } from 'lucide-react'
 
 type Exercise = Database['public']['Tables']['exercises']['Row']
 
@@ -249,6 +250,15 @@ export default function HomePage() {
           
           <div className="flex items-center gap-2">
             {/* Request Exercise Button */}
+
+            <button
+              onClick={() => router.push('/history')}
+              className="px-4 py-2 rounded-lg bg-muted text-foreground font-mono text-sm hover:bg-muted/80 transition-colors flex items-center gap-2"
+            >
+              <History className="w-4 h-4" />
+              <span className="hidden sm:inline">History</span>
+            </button>
+
             <button
               onClick={() => setRequestModalOpen(true)}
               className="px-4 py-2 rounded-lg bg-primary/10 text-primary font-mono text-sm hover:bg-primary/20 transition-colors flex items-center gap-2 border-2 border-primary/30"

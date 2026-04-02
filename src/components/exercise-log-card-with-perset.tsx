@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { Dumbbell, Check, X, ChevronDown, ChevronUp } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { PerSetTracker, SetData, SetType } from '@/components/per-set-tracker'
+import { PerSetTracker, SetData, SetType } from '@/components/per-sets-tracker'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 
@@ -31,6 +31,7 @@ export interface ExerciseLogDataWithPerSet {
   actual_reps: number
   actual_weight: number
   sets_data: SetData[]
+  session_notes?: string
 }
 
 export function ExerciseLogCardWithPerSet({
