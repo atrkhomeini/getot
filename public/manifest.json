@@ -1,5 +1,5 @@
 {
-  "id": "getot.vercel.app",
+  "id": "getot.app",
   "name": "Getot - Gym Logbook",
   "short_name": "Getot",
   "description": "Track your fitness journey with our comprehensive gym guide and logbook",
@@ -69,5 +69,6 @@
       "form_factor": "narrow",
       "label": "Home Screen"
     }
-  ]
+  ],
+  "prefer_related_applications": false
 }
