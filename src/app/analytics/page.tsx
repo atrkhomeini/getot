@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
 import { Database } from '@/lib/supabase'
@@ -19,7 +19,13 @@ import {
   Target,
   Activity
 } from 'lucide-react'
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts'
+import { LineChart, Line, XAxis, CartesianGrid, PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
+import { 
+  ChartContainer,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from "@/components/ui/chart"
 import { cn } from '@/lib/utils'
 
 type Exercise = Database['public']['Tables']['exercises']['Row']
@@ -73,6 +79,20 @@ const SET_TYPE_COLORS = {
   failure: '#EF4444',
 }
 
+const volumeChartConfig = {
+  volume: {
+    label: "Volume",
+  },
+  workingVolume: {
+    label: "Working Volume",
+    color: "#22C55E",
+  },
+  totalVolume: {
+    label: "Total Volume",
+    color: "#6B7280",
+  },
+} satisfies ChartConfig
+
 export default function AnalyticsPage() {
   const router = useRouter()
   const { currentUser } = useAppStore()
@@ -84,6 +104,7 @@ export default function AnalyticsPage() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const [categoryAnalytics, setCategoryAnalytics] = useState<Record<string, any>>({})
   const [summaryMetrics, setSummaryMetrics] = useState<any>(null)
+  const [activeChart, setActiveChart] = useState<"workingVolume" | "totalVolume">("workingVolume")
 
   useEffect(() => {
     if (!currentUser) {
@@ -103,7 +124,6 @@ export default function AnalyticsPage() {
     if (!currentUser) return
 
     try {
-      // Fetch workout logs — skip date filter when "all"
       const days = selectedPeriod === 'week' ? 7 : selectedPeriod === 'month' ? 30 : null
 
       let logsQuery = supabase
@@ -121,7 +141,6 @@ export default function AnalyticsPage() {
 
       if (logsError) throw logsError
 
-      // Process logs to add metrics
       const processedLogs = (logs || []).map(log => {
         const setsData: SetData[] = (log.sets_data || []) as SetData[]
         
@@ -182,7 +201,6 @@ export default function AnalyticsPage() {
         }
       })
 
-      // Fetch check-ins
       const { data: ci, error: ciError } = await supabase
         .from('check_ins')
         .select('*')
@@ -191,7 +209,6 @@ export default function AnalyticsPage() {
 
       if (ciError) throw ciError
 
-      // Fetch exercises
       const { data: ex, error: exError } = await supabase
         .from('exercises')
         .select('*')
@@ -211,7 +228,6 @@ export default function AnalyticsPage() {
   const calculateEnhancedAnalytics = () => {
     if (workoutLogs.length === 0) return
 
-    // Group by category
     const categoryData: Record<string, any[]> = {}
 
     workoutLogs.forEach(log => {
@@ -238,7 +254,6 @@ export default function AnalyticsPage() {
       })
     })
 
-    // Calculate progress for each category
     const categoryProgress: Record<string, any> = {}
 
     Object.keys(categoryData).forEach(cat => {
@@ -296,7 +311,6 @@ export default function AnalyticsPage() {
 
     setCategoryAnalytics(categoryProgress)
 
-    // Calculate overall summary
     const summary = {
       totalWorkingVolume: workoutLogs.reduce((sum, l) => sum + (l.metrics?.workingVolume || 0), 0),
       totalVolume: workoutLogs.reduce((sum, l) => sum + (l.metrics?.totalVolume || 0), 0),
@@ -315,7 +329,6 @@ export default function AnalyticsPage() {
   }
 
   const getChartData = () => {
-    // All-time: group by actual dates that exist in data
     if (selectedPeriod === 'all') {
       const dateMap: Record<string, { workingVolume: number; totalVolume: number; reps: number }> = {}
 
@@ -339,7 +352,6 @@ export default function AnalyticsPage() {
         }))
     }
 
-    // Week / Month: generate placeholder days
     const days = selectedPeriod === 'week' ? 7 : 30
     const data = []
 
@@ -448,6 +460,13 @@ export default function AnalyticsPage() {
     }
   }
 
+  // Moved above the early return to prevent Rules of Hooks violation
+  const chartData = getChartData()
+  const volumeTotals = useMemo(() => ({
+    workingVolume: chartData.reduce((acc, curr) => acc + (curr.workingVolume || 0), 0),
+    totalVolume: chartData.reduce((acc, curr) => acc + (curr.totalVolume || 0), 0),
+  }), [chartData])
+
   if (loading) {
     return (
       <UserLayout>
@@ -458,7 +477,6 @@ export default function AnalyticsPage() {
     )
   }
 
-  const chartData = getChartData()
   const consistencyData = getConsistencyData()
   const stats = getStats()
   const categories = Object.keys(categoryAnalytics)
@@ -791,59 +809,91 @@ export default function AnalyticsPage() {
           </div>
         </div>
 
-        {/* Performance Chart */}
-        <div className="neo-card bg-card rounded-2xl p-6 mb-8">
-          <div className="flex items-center justify-between mb-4">
-            <div>
+        {/* Performance Chart — Interactive */}
+        <div className="neo-card bg-card rounded-2xl overflow-hidden mb-8">
+          <div className="flex flex-col items-stretch sm:flex-row border-b-2 border-b-border">
+            <div className="flex flex-1 flex-col justify-center gap-1 py-4 px-6">
               <h2 className="text-xl font-bold text-foreground">
-                Working Volume Over Time
+                Volume Over Time
                 {selectedCategory && ` (${selectedCategory})`}
               </h2>
-              <p className="text-xs text-muted-foreground font-mono mt-1">
-                Green = Working sets only • Gray = Includes warm-up
+              <p className="text-xs text-muted-foreground font-mono">
+                Tap to toggle view
               </p>
             </div>
+            <div className="flex">
+              {(["workingVolume", "totalVolume"] as const).map((key) => {
+                const config = volumeChartConfig[key]
+                return (
+                  <button
+                    key={key}
+                    data-active={activeChart === key}
+                    className={cn(
+                      "relative z-10 flex flex-1 flex-col justify-center gap-1 px-6 py-4 text-left font-mono transition-colors",
+                      "border-l-2 border-l-border first:border-l-0",
+                      "data-[active=true]:bg-[var(--color-workingVolume)] even:data-[active=true]:bg-[var(--color-totalVolume)]",
+                      "data-[active=true]:text-white text-foreground"
+                    )}
+                    onClick={() => setActiveChart(key)}
+                  >
+                    <span className="text-xs data-[active=true]:text-white/80 text-muted-foreground">
+                      {config.label}
+                    </span>
+                    <span className="text-lg leading-none font-bold sm:text-2xl">
+                      {volumeTotals[key].toLocaleString()} kg
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
           </div>
-          <div className="h-64">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={chartData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+          <div className="p-4 sm:p-6">
+            <ChartContainer
+              config={volumeChartConfig}
+              className={cn(
+                "aspect-auto h-[250px] w-full",
+                activeChart === "workingVolume" &&
+                  "[&_.recharts-layer_path]:stroke-[var(--color-workingVolume)]",
+                activeChart === "totalVolume" &&
+                  "[&_.recharts-layer_path]:stroke-[var(--color-totalVolume)]",
+              )}
+            >
+              <LineChart
+                accessibilityLayer
+                data={chartData}
+                margin={{ left: 12, right: 12 }}
+              >
+                <CartesianGrid vertical={false} />
                 <XAxis
                   dataKey="date"
-                  stroke="var(--foreground)"
+                  tickLine={false}
+                  axisLine={false}
+                  tickMargin={8}
+                  minTickGap={32}
                   style={{ fontSize: '12px', fontFamily: 'Consolas, monospace' }}
                 />
-                <YAxis
-                  stroke="var(--foreground)"
-                  style={{ fontSize: '12px', fontFamily: 'Consolas, monospace' }}
-                />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: 'var(--card)',
-                    border: '2px solid var(--border)',
-                    borderRadius: '8px',
-                    fontFamily: 'Consolas, monospace',
-                  }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="workingVolume"
-                  stroke="#22C55E"
-                  strokeWidth={3}
-                  dot={{ fill: '#22C55E', strokeWidth: 2, r: 4 }}
-                  name="Working Volume"
+                <ChartTooltip
+                  content={
+                    <ChartTooltipContent
+                      className="w-[180px] font-mono"
+                      nameKey="volume"
+                      formatter={(value: number, name: string) => (
+                        <div className="flex min-w-[130px] items-center justify-between gap-4">
+                          <span className="text-muted-foreground capitalize">{name}</span>
+                          <span className="font-mono font-bold text-foreground">{value.toLocaleString()} kg</span>
+                        </div>
+                      )}
+                    />
+                  }
                 />
                 <Line
+                  dataKey={activeChart}
                   type="monotone"
-                  dataKey="totalVolume"
-                  stroke="#6B7280"
                   strokeWidth={2}
-                  strokeDasharray="5 5"
-                  dot={{ fill: '#6B7280', strokeWidth: 2, r: 3 }}
-                  name="Total Volume"
+                  dot={false}
                 />
               </LineChart>
-            </ResponsiveContainer>
+            </ChartContainer>
           </div>
         </div>
 
