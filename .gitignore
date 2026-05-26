@@ -57,3 +57,6 @@ public/workbox-*.js
 public/fallback-*.js
 public/swe-worker-*.js
 public/swe-worker-*.js.map
+
+# Obsidian files
+notes/
