@@ -68,9 +68,9 @@ const categoryIcons: Record<string, string> = {
 }
 
 const SET_TYPE_COLORS = {
-  warmup: '#EAB308', // Yellow
-  normal: '#6B7280', // Gray
-  failure: '#EF4444', // Red
+  warmup: '#EAB308',
+  normal: '#6B7280',
+  failure: '#EF4444',
 }
 
 export default function AnalyticsPage() {
@@ -80,7 +80,7 @@ export default function AnalyticsPage() {
   const [checkIns, setCheckIns] = useState<CheckIn[]>([])
   const [exercises, setExercises] = useState<Exercise[]>([])
   const [loading, setLoading] = useState(true)
-  const [selectedPeriod, setSelectedPeriod] = useState<'week' | 'month'>('week')
+  const [selectedPeriod, setSelectedPeriod] = useState<'week' | 'month' | 'all'>('week')
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
   const [categoryAnalytics, setCategoryAnalytics] = useState<Record<string, any>>({})
   const [summaryMetrics, setSummaryMetrics] = useState<any>(null)
@@ -91,7 +91,7 @@ export default function AnalyticsPage() {
       return
     }
     fetchData()
-  }, [currentUser, router])
+  }, [currentUser, router, selectedPeriod])
 
   useEffect(() => {
     if (workoutLogs.length > 0) {
@@ -103,17 +103,21 @@ export default function AnalyticsPage() {
     if (!currentUser) return
 
     try {
-      const days = selectedPeriod === 'week' ? 7 : 30
-      const startDate = new Date()
-      startDate.setDate(startDate.getDate() - days)
+      // Fetch workout logs — skip date filter when "all"
+      const days = selectedPeriod === 'week' ? 7 : selectedPeriod === 'month' ? 30 : null
 
-      // Fetch workout logs
-      const { data: logs, error: logsError } = await supabase
+      let logsQuery = supabase
         .from('workout_logs')
         .select('*')
         .eq('user_id', currentUser.id)
-        .gte('date', startDate.toISOString().split('T')[0])
-        .order('date', { ascending: true })
+
+      if (days) {
+        const startDate = new Date()
+        startDate.setDate(startDate.getDate() - days)
+        logsQuery = logsQuery.gte('date', startDate.toISOString().split('T')[0])
+      }
+
+      const { data: logs, error: logsError } = await logsQuery.order('date', { ascending: true })
 
       if (logsError) throw logsError
 
@@ -247,7 +251,6 @@ export default function AnalyticsPage() {
       const firstLog = catLogs[0]
       const lastLog = catLogs[catLogs.length - 1]
 
-      // Working volume growth
       const firstWorkingVolume = catLogs
         .filter(l => l.date === firstLog.date)
         .reduce((sum, l) => sum + (l.metrics?.workingVolume || 0), 0)
@@ -260,12 +263,10 @@ export default function AnalyticsPage() {
         ? ((lastWorkingVolume - firstWorkingVolume) / firstWorkingVolume) * 100
         : 0
 
-      // Aggregate metrics
       const totalWorkingVolume = catLogs.reduce((sum, l) => sum + (l.metrics?.workingVolume || 0), 0)
       const avgFailureRate = catLogs.reduce((sum, l) => sum + (l.metrics?.failureRate || 0), 0) / catLogs.length
       const avgIntensity = catLogs.reduce((sum, l) => sum + (l.metrics?.intensityScore || 0), 0) / catLogs.length
 
-      // Set type totals
       const setTotals = { warmup: 0, normal: 0, failure: 0 }
       catLogs.forEach(l => {
         if (l.metrics?.setDistribution) {
@@ -313,8 +314,32 @@ export default function AnalyticsPage() {
     setSummaryMetrics(summary)
   }
 
-  // Get last 7 days or 30 days data
   const getChartData = () => {
+    // All-time: group by actual dates that exist in data
+    if (selectedPeriod === 'all') {
+      const dateMap: Record<string, { workingVolume: number; totalVolume: number; reps: number }> = {}
+
+      workoutLogs.forEach(log => {
+        const exercise = exercises.find(ex => ex.id === log.exercise_id)
+        if (selectedCategory && exercise?.category !== selectedCategory) return
+
+        if (!dateMap[log.date]) {
+          dateMap[log.date] = { workingVolume: 0, totalVolume: 0, reps: 0 }
+        }
+        dateMap[log.date].workingVolume += log.metrics?.workingVolume || 0
+        dateMap[log.date].totalVolume += log.metrics?.totalVolume || 0
+        dateMap[log.date].reps += log.metrics?.workingReps || 0
+      })
+
+      return Object.entries(dateMap)
+        .sort(([a], [b]) => new Date(a).getTime() - new Date(b).getTime())
+        .map(([dateStr, values]) => ({
+          date: new Date(dateStr + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+          ...values,
+        }))
+    }
+
+    // Week / Month: generate placeholder days
     const days = selectedPeriod === 'week' ? 7 : 30
     const data = []
 
@@ -332,13 +357,11 @@ export default function AnalyticsPage() {
           })
         : dayLogs
 
-      // Working volume (excludes warmup)
       const workingVolume = filteredLogs.reduce(
         (sum, log) => sum + (log.metrics?.workingVolume || 0),
         0
       )
 
-      // Total volume (includes warmup) - for comparison
       const totalVolume = filteredLogs.reduce(
         (sum, log) => sum + (log.metrics?.totalVolume || 0),
         0
@@ -357,7 +380,6 @@ export default function AnalyticsPage() {
     return data
   }
 
-  // GitHub-style consistency graph
   const getConsistencyData = () => {
     const weeks = 12
     const data = []
@@ -403,7 +425,6 @@ export default function AnalyticsPage() {
     const totalDuration = checkIns.reduce((sum, ci) => sum + (ci.duration_minutes || 0), 0)
     const avgDuration = totalWorkouts > 0 ? Math.round(totalDuration / totalWorkouts) : 0
 
-    // Current streak
     let streak = 0
     const today = new Date()
     for (let i = 0; i < 365; i++) {
@@ -450,7 +471,6 @@ export default function AnalyticsPage() {
     'bg-primary',
   ]
 
-  // Pie chart data for set type distribution
   const pieData = summaryMetrics ? [
     { name: 'Warm-up', value: summaryMetrics.setTotals.warmup, color: SET_TYPE_COLORS.warmup },
     { name: 'Normal', value: summaryMetrics.setTotals.normal, color: SET_TYPE_COLORS.normal },
@@ -495,6 +515,17 @@ export default function AnalyticsPage() {
             >
               Month
             </button>
+            <button
+              onClick={() => setSelectedPeriod('all')}
+              className={cn(
+                "px-4 py-2 rounded-lg font-mono text-sm font-bold transition-all",
+                selectedPeriod === 'all'
+                  ? "neo-button bg-primary text-primary-foreground"
+                  : "bg-muted text-muted-foreground hover:text-foreground"
+              )}
+            >
+              All Time
+            </button>
             {selectedCategory && (
               <button
                 onClick={() => setSelectedCategory(null)}
@@ -508,7 +539,6 @@ export default function AnalyticsPage() {
 
         {/* Enhanced Stats Grid */}
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-8">
-          {/* Working Volume */}
           <div className="neo-card bg-card rounded-xl p-4 text-center col-span-2">
             <Activity className="w-6 h-6 mx-auto mb-2 text-primary" />
             <p className="font-mono text-3xl font-bold text-foreground">
@@ -519,7 +549,6 @@ export default function AnalyticsPage() {
             <p className="font-mono text-[10px] text-green-600 mt-1">Excludes warm-up</p>
           </div>
 
-          {/* Failure Rate */}
           <div className="neo-card bg-card rounded-xl p-4 text-center">
             <Flame className="w-6 h-6 mx-auto mb-2 text-red-500" />
             <p className="font-mono text-2xl font-bold text-foreground">
@@ -528,7 +557,6 @@ export default function AnalyticsPage() {
             <p className="font-mono text-xs text-muted-foreground">Failure Rate</p>
           </div>
 
-          {/* Intensity Score */}
           <div className="neo-card bg-card rounded-xl p-4 text-center">
             <Target className="w-6 h-6 mx-auto mb-2 text-secondary" />
             <p className="font-mono text-2xl font-bold text-foreground">
@@ -537,14 +565,12 @@ export default function AnalyticsPage() {
             <p className="font-mono text-xs text-muted-foreground">Intensity</p>
           </div>
 
-          {/* Day Streak */}
           <div className="neo-card bg-card rounded-xl p-4 text-center">
             <Calendar className="w-6 h-6 mx-auto mb-2 text-accent" />
             <p className="font-mono text-2xl font-bold text-foreground">{stats.streak}</p>
             <p className="font-mono text-xs text-muted-foreground">Day Streak</p>
           </div>
 
-          {/* Total Workouts */}
           <div className="neo-card bg-card rounded-xl p-4 text-center">
             <BarChart3 className="w-6 h-6 mx-auto mb-2 text-primary" />
             <p className="font-mono text-2xl font-bold text-foreground">{stats.totalWorkouts}</p>
@@ -554,7 +580,6 @@ export default function AnalyticsPage() {
 
         {/* Set Type Distribution + Stats */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-          {/* Set Type Pie Chart */}
           <div className="neo-card bg-card rounded-2xl p-6">
             <h2 className="text-xl font-bold text-foreground mb-4 flex items-center gap-2">
               <TrendingUp className="w-5 h-5" />
@@ -586,7 +611,6 @@ export default function AnalyticsPage() {
                   </ResponsiveContainer>
                 </div>
 
-                {/* Legend */}
                 <div className="flex items-center justify-center gap-4 mt-4">
                   <div className="flex items-center gap-2">
                     <div className="w-4 h-4 rounded" style={{ backgroundColor: SET_TYPE_COLORS.warmup }} />
@@ -608,7 +632,6 @@ export default function AnalyticsPage() {
                   </div>
                 </div>
 
-                {/* Summary */}
                 <div className="mt-4 p-3 bg-muted rounded-lg">
                   <p className="text-xs font-mono text-center text-muted-foreground">
                     {summaryMetrics.totalSets} total sets • {summaryMetrics.workingSets} working sets
@@ -622,13 +645,11 @@ export default function AnalyticsPage() {
             )}
           </div>
 
-          {/* Volume Comparison */}
           <div className="neo-card bg-card rounded-2xl p-6">
             <h2 className="text-xl font-bold text-foreground mb-4">Volume Comparison</h2>
             
             {summaryMetrics && (
               <div className="space-y-4">
-                {/* Working Volume */}
                 <div>
                   <div className="flex justify-between mb-1">
                     <span className="text-sm font-mono text-muted-foreground">Working Volume</span>
@@ -646,7 +667,6 @@ export default function AnalyticsPage() {
                   </div>
                 </div>
 
-                {/* Total Volume (for comparison) */}
                 <div>
                   <div className="flex justify-between mb-1">
                     <span className="text-sm font-mono text-muted-foreground">Total Volume</span>
@@ -659,7 +679,6 @@ export default function AnalyticsPage() {
                   </div>
                 </div>
 
-                {/* Difference */}
                 <div className="p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
                   <div className="flex items-center gap-2">
                     <Sun className="w-4 h-4 text-yellow-600" />
@@ -712,7 +731,6 @@ export default function AnalyticsPage() {
                   </div>
                   
                   <div className="space-y-2">
-                    {/* Working Volume */}
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-muted-foreground">Working Vol</span>
                       <span className="font-mono font-bold text-foreground">
@@ -720,7 +738,6 @@ export default function AnalyticsPage() {
                       </span>
                     </div>
 
-                    {/* Max Weight */}
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-muted-foreground">Max Weight</span>
                       <span className="font-mono font-bold text-foreground">
@@ -728,7 +745,6 @@ export default function AnalyticsPage() {
                       </span>
                     </div>
                     
-                    {/* Growth */}
                     <div className={cn(
                       "flex items-center gap-1 text-xs font-mono",
                       isPositive ? "text-green-600" : "text-red-600"
@@ -739,7 +755,6 @@ export default function AnalyticsPage() {
                       </span>
                     </div>
 
-                    {/* Failure Rate */}
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-muted-foreground">Failure Rate</span>
                       <span className="font-mono text-red-500">
@@ -747,7 +762,6 @@ export default function AnalyticsPage() {
                       </span>
                     </div>
 
-                    {/* Intensity */}
                     <div className="flex items-center justify-between text-xs">
                       <span className="text-muted-foreground">Intensity</span>
                       <span className="font-mono text-secondary">
@@ -755,7 +769,6 @@ export default function AnalyticsPage() {
                       </span>
                     </div>
 
-                    {/* Mini bar */}
                     <div className="mt-2 h-1.5 bg-muted rounded-full overflow-hidden">
                       <div
                         className="h-full transition-all duration-300"
@@ -887,7 +900,6 @@ export default function AnalyticsPage() {
               </div>
             </div>
 
-            {/* Detailed Metrics */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
               <div className="p-4 bg-muted rounded-xl">
                 <div className="flex items-center gap-2 mb-2">
@@ -930,7 +942,6 @@ export default function AnalyticsPage() {
               </div>
             </div>
 
-            {/* Set Distribution for Category */}
             <div className="mb-6 p-4 bg-muted rounded-xl">
               <p className="text-sm font-mono text-muted-foreground mb-3">Set Type Distribution</p>
               <div className="flex items-center gap-4">
@@ -949,7 +960,6 @@ export default function AnalyticsPage() {
               </div>
             </div>
 
-            {/* Recent Workouts */}
             <h3 className="font-bold text-foreground mb-4">Recent Workouts</h3>
             <div className="space-y-2 max-h-64 overflow-y-auto">
               {[...categoryAnalytics[selectedCategory].logs]
